@@ -7,7 +7,7 @@ import java.net.Socket;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
-import eu.project.rapid.common.Configuration;
+import eu.project.rapid.utils.Configuration;
 
 /**
  * The AS waiting for clear client connections.<br>

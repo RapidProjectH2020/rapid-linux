@@ -21,10 +21,11 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 // import org.bouncycastle.jce.provider.BouncyCastleProvider;
 
-import eu.project.rapid.common.Commands;
-import eu.project.rapid.common.Configuration;
-import eu.project.rapid.common.ResultContainer;
-import eu.project.rapid.common.Utils;
+import eu.project.rapid.ac.ResultContainer;
+import eu.project.rapid.common.RapidMessages;
+import eu.project.rapid.common.RapidUtils;
+import eu.project.rapid.utils.Configuration;
+import eu.project.rapid.utils.Utils;
 
 public class AppHandler {
   //
@@ -71,28 +72,28 @@ public class AppHandler {
         command = is.read();
         log.info("Received command: " + command);
         switch (command) {
-          case Commands.PING:
-            os.write(Commands.PING);
+          case RapidMessages.PING:
+            os.write(RapidMessages.PING);
             break;
 
-          case Commands.AC_REGISTER_AS:
+          case RapidMessages.AC_REGISTER_AS:
             log.info("Client requesting REGISTER");
             jarName = dOis.readUTF();
             jarLength = dOis.readLong();
-            appFolderPath = this.config.getRapidServerFolder() + File.separator + jarName;
+            appFolderPath = this.config.getRapidFolder() + File.separator + jarName;
             jarFilePath = appFolderPath + File.separator + jarName + ".jar";
             if (!appExists()) {
               log.info("Jar file not present or old version, should read the jar file");
-              os.write(Commands.AS_APP_REQ_AC);
+              os.write(RapidMessages.AS_APP_REQ_AC);
               receiveJarFile();
             } else {
               log.info("Jar file already present");
-              os.write(Commands.AS_APP_PRESENT_AC);
+              os.write(RapidMessages.AS_APP_PRESENT_AC);
             }
             dOis.setJar(appFolderPath, jarFilePath);
             break;
 
-          case Commands.AC_OFFLOAD_REQ_AS:
+          case RapidMessages.AC_OFFLOAD_REQ_AS:
             log.info("Client requesting OFFLOAD_EXECUTION");
             Object result = retrieveAndExecute();
             oos.writeObject(result);
@@ -106,20 +107,9 @@ public class AppHandler {
       log.error("Could not create client streams: " + e);
       e.printStackTrace();
     } finally {
-      try {
-        clientSocket.close();
-      } catch (IOException e) {
-        log.error("Could not close the client socket: " + e);
-      }
-
-      if (oos != null) {
-        try {
-          oos.close();
-          dOis.close();
-        } catch (IOException e) {
-          log.error("Error while closing client streams: " + e);
-        }
-      }
+      RapidUtils.closeQuietly(oos);
+      RapidUtils.closeQuietly(dOis);
+      RapidUtils.closeQuietly(clientSocket);
     }
   }
 

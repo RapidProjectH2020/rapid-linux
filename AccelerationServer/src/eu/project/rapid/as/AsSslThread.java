@@ -12,7 +12,7 @@ import javax.net.ssl.SSLServerSocketFactory;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
-import eu.project.rapid.common.Configuration;
+import eu.project.rapid.utils.Configuration;
 
 public class AsSslThread implements Runnable {
 

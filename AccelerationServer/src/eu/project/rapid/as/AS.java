@@ -10,9 +10,10 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 // import org.bouncycastle.jce.provider.BouncyCastleProvider;
 
-import eu.project.rapid.common.Commands;
-import eu.project.rapid.common.Configuration;
-import eu.project.rapid.common.Utils;
+import eu.project.rapid.common.RapidConstants.REGIME;
+import eu.project.rapid.common.RapidMessages;
+import eu.project.rapid.utils.Configuration;
+import eu.project.rapid.utils.Utils;
 
 /**
  * Implementation of the Acceleration Server (AS), which starts running automatically when the
@@ -33,7 +34,7 @@ public class AS {
 
   public AS() {
     log.info("Starting the AS");
-    config = new Configuration(AS.class.getSimpleName());
+    config = new Configuration(AS.class.getSimpleName(), REGIME.AS);
 
     if (config.getSlamIp() == null) {
       log.warn("The configuration file does not contain the SLAM IP.");
@@ -46,7 +47,7 @@ public class AS {
     }
 
     try {
-      Utils.createDirIfNotExist(config.getRapidServerFolder());
+      Utils.createDirIfNotExist(config.getRapidFolder());
       Utils.createOffloadFile();
     } catch (FileNotFoundException e) {
       log.error("Could not initialize the RAPID folder on " + config.getUserHomeFolder());
@@ -55,14 +56,16 @@ public class AS {
     // FIXME
     // register();
 
+    // Start the thread that listens for network connectivity measurements
+    log.info("Starting NetworkProfiler thread...");
+    new Thread(new NetworkProfilerServer(config)).start();
+
     // Start the clear AS server thread
     log.info("Starting CLEAR thread...");
-    // FIXME
     new Thread(new AsClearThread(config)).start();
 
     if (config.isCryptoInitialized()) {
       log.info("Starting SSL thread...");
-      // FIXME
       new Thread(new AsSslThread(config)).start();
     } else {
       log.warn("SSL thread not started since crypto not initialized");
@@ -89,17 +92,17 @@ public class AS {
         ObjectOutputStream oos = new ObjectOutputStream(slamSocket.getOutputStream());
         ObjectInputStream ois = new ObjectInputStream(slamSocket.getInputStream())) {
 
-      oos.writeByte(Commands.AS_RM_REGISTER_SLAM);
+      oos.writeByte(RapidMessages.AS_RM_REGISTER_SLAM);
       oos.flush();
       userId = ois.readInt();
 
       // If the registration with the DS is not performed correctly, the AS will quit.
       if (registerToDs()) {
         // Otherwise the registration with the DS was OK.
-        oos.write(Commands.OK);
+        oos.write(RapidMessages.OK);
         return true;
       } else {
-        oos.write(Commands.ERROR);
+        oos.write(RapidMessages.ERROR);
       }
       oos.flush();
     } catch (IOException e) {
@@ -114,12 +117,12 @@ public class AS {
         ObjectOutputStream oos = new ObjectOutputStream(dsSocket.getOutputStream());
         ObjectInputStream ois = new ObjectInputStream(dsSocket.getInputStream())) {
 
-      oos.writeByte(Commands.AS_RM_REGISTER_DS);
+      oos.writeByte(RapidMessages.AS_RM_REGISTER_DS);
       oos.flush();
       int response = ois.readByte();
-      if (response == Commands.OK) {
+      if (response == RapidMessages.OK) {
         return true;
-      } else if (response == Commands.ERROR) {
+      } else if (response == RapidMessages.ERROR) {
         log.error("DS replied with ERROR to the register request");
       } else {
         log.error("DS replied with unkown message to the register request");
