@@ -27,14 +27,16 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 import eu.project.rapid.ac.profilers.NetworkProfiler;
+import eu.project.rapid.ac.profilers.Profiler;
 import eu.project.rapid.ac.rm.AC_RM;
-import eu.project.rapid.common.Commands;
-import eu.project.rapid.common.Configuration;
-import eu.project.rapid.common.Constants;
-import eu.project.rapid.common.Constants.ExecLocation;
-import eu.project.rapid.common.ResultContainer;
-import eu.project.rapid.common.Utils;
-import eu.project.rapid.common.VM;
+import eu.project.rapid.common.Clone;
+import eu.project.rapid.common.RapidConstants.ExecLocation;
+import eu.project.rapid.common.RapidConstants.REGIME;
+import eu.project.rapid.common.RapidMessages;
+import eu.project.rapid.gvirtusfe.GVirtusFrontend;
+import eu.project.rapid.utils.Configuration;
+import eu.project.rapid.utils.Constants;
+import eu.project.rapid.utils.Utils;
 
 /**
  * The class that handles the task execution using Java reflection.<br>
@@ -44,14 +46,15 @@ import eu.project.rapid.common.VM;
  */
 public class DFE {
 
-  // static {
-  // Security.insertProviderAt(new BouncyCastleProvider(), 1);
-  // }
-
   private final static Logger log = LogManager.getLogger(DFE.class.getSimpleName());
 
   private Configuration config;
+
+  // Design and Space Explorer is responsible for deciding where to execute the method.
   private DSE dse;
+
+  // GVirtuS frontend is responsible for running the CUDA code.
+  private GVirtusFrontend gVirtusFrontend;
 
   // Variables related to the app using the DFE
   private String jarFilePath;
@@ -62,37 +65,42 @@ public class DFE {
   private boolean connectedWithAs;
 
   // Socket and streams with the VM
-  private VM vm;
+  private Clone vm;
   private Socket vmSocket;
   private InputStream vmIs;
   private OutputStream vmOs;
   private ObjectOutputStream vmOos;
   private ObjectInputStream vmOis;
 
-  // Profilers
-  private NetworkProfiler netProfiler;
+  // If the developer has implemented the prepareData method then we measure how much it takes to
+  // prepare the data.
+  private long prepareDataDur = -1;
 
   // Constructor to be used by the AS
   public DFE(boolean serverSide) {}
 
-  // Constructor to be used by the applications.
+  // Constructor to be used by the application.
   public DFE() {
-    config = new Configuration(DFE.class.getSimpleName());
-    dse = new DSE();
+    config = new Configuration(DFE.class.getSimpleName(), REGIME.AC);
+    dse = new DSE(config);
 
     // Create the folder where the client apps wills keep their data.
     try {
-      Utils.createDirIfNotExist(config.getRapidClientFolder());
+      Utils.createDirIfNotExist(config.getRapidFolder());
     } catch (FileNotFoundException e) {
-      log.error("Could not create folder " + config.getRapidClientFolder() + ": " + e);
+      log.error("Could not create folder " + config.getRapidFolder() + ": " + e);
     }
 
+    // Starts the AC_RM component, which is unique for each device and handles the registration
+    // mechanism with the DS.
     startAcRm();
-    initialize();
+    // Talk with the AC_RM to get the info about the vm to connect to.
+    vm = initialize();
 
     if (vm == null) {
       log.warn("It was not possible to get a VM, only local execution will be possible.");
     } else {
+      config.setVm(vm);
       log.info("Received VM " + vm + " from AC_RM, connecting now...");
 
       if (config.isConnectSsl()) {
@@ -107,8 +115,36 @@ public class DFE {
 
       if (connectedWithAs) {
         log.info("Connected to VM");
-        netProfiler = new NetworkProfiler(vmIs, vmOs);
-        NetworkProfiler.rttPing();
+
+        if (config.getGvirtusIp() == null) {
+          // If gvirtusIp is null, then gvirtus backend is running on the physical machine where
+          // the VM is running.
+          // Try to find a way here to get the ip address of the physical machine.
+          // config.setGvirtusIp(TODO: ip address of the physical machine where the VM is running);
+        }
+        // Create a gvirtus frontend object that is responsible for executing the CUDA code.
+        gVirtusFrontend = new GVirtusFrontend(config.getGvirtusIp(), config.getGvirtusPort());
+
+        NetworkProfiler.startNetworkMonitoring(config);
+
+        // Start waiting for the network profiling to be finished.
+        // Wait maximum for 10 seconds and then give up, since something could have gone wrong.
+        long startWaiting = System.currentTimeMillis();
+        while (NetworkProfiler.rtt == NetworkProfiler.rttInfinite
+            || NetworkProfiler.lastUlRate == -1 || NetworkProfiler.lastDlRate == -1) {
+
+          if ((System.currentTimeMillis() - startWaiting) > 10 * 1000) {
+            log.warn("Too much time for the network profiling to finish, postponing for later.");
+            break;
+          }
+
+          try {
+            Thread.sleep(500);
+            log.debug("Waiting for network profiling to finish...");
+          } catch (InterruptedException e) {
+          }
+        }
+        log.debug("Network profiling finished.");
 
         registerWithAs();
       }
@@ -160,21 +196,20 @@ public class DFE {
     CodeSource codeSource = DFE.class.getProtectionDomain().getCodeSource();
     if (codeSource != null) {
       jarFilePath = codeSource.getLocation().getFile();// getPath();
-      // jarFilePath = "/Users/sokol/Desktop/demo.jar";
       File jarFile = new File(jarFilePath);
       jarSize = jarFile.length();
       log.info("jarFilePath: " + jarFilePath + ", jarSize: " + jarSize + " bytes");
       jarName = jarFilePath.substring(jarFilePath.lastIndexOf(File.separator) + 1,
           jarFilePath.lastIndexOf("."));
       try {
-        vmOs.write(Commands.AC_REGISTER_AS);
+        vmOs.write(RapidMessages.AC_REGISTER_AS);
         vmOos.writeUTF(jarName);
         vmOos.writeLong(jarSize);
         vmOos.flush();
         int response = vmIs.read();
-        if (response == Commands.AS_APP_PRESENT_AC) {
+        if (response == RapidMessages.AS_APP_PRESENT_AC) {
           log.info("The app is already present on the AS, do nothing.");
-        } else if (response == Commands.AS_APP_REQ_AC) {
+        } else if (response == RapidMessages.AS_APP_REQ_AC) {
           log.info("Should send the app to the AS");
           sendApp(jarFile);
         }
@@ -244,12 +279,13 @@ public class DFE {
    * Initialize the variables that were stored by previous executions, e.g. the userID, the VM to
    * connect to, etc. Usually these variables will be provided by the AC_RM.
    */
-  private void initialize() {
+  private Clone initialize() {
     // Connect to the AC_RM, which is a server component running on this machine, and ask for the
     // parameters.
 
+    Clone vm = null;
     boolean connectionAcRmSuccess = false;
-    do {
+    while (!connectionAcRmSuccess) {
       try (Socket socket = new Socket(InetAddress.getLocalHost(), config.getAcRmPort());
           OutputStream os = socket.getOutputStream();
           InputStream is = socket.getInputStream();
@@ -257,10 +293,10 @@ public class DFE {
           ObjectInputStream ois = new ObjectInputStream(is);) {
 
         // Ask the AC_RM for the VM to connect to.
-        os.write(Commands.AC_HELLO_AC_RM);
+        os.write(RapidMessages.AC_HELLO_AC_RM);
         userID = ois.readInt();
         try {
-          vm = (VM) ois.readObject();
+          vm = (Clone) ois.readObject();
         } catch (ClassNotFoundException e) {
           log.error("Could not properly receive the VM info from the AC_RM: " + e);
         }
@@ -274,7 +310,9 @@ public class DFE {
         } catch (InterruptedException e1) {
         }
       }
-    } while (!connectionAcRmSuccess);
+    }
+
+    return vm;
   }
 
   /**
@@ -357,6 +395,7 @@ public class DFE {
           result = futureTotalResult.get();
         } catch (InterruptedException | ExecutionException e) {
           log.error("Error while calling TaskRunner: " + e);
+          e.printStackTrace();
         }
         break;
     }
@@ -422,27 +461,21 @@ public class DFE {
     private Object executeLocally(Method m, Object[] pValues, Object o)
         throws IllegalArgumentException, IllegalAccessException, InvocationTargetException {
 
-      // ProgramProfiler progProfiler = new ProgramProfiler(mAppName, m.getName());
-      // DeviceProfiler devProfiler = new DeviceProfiler(mContext);
-      // NetworkProfiler netProfiler = null;
-      // Profiler profiler = new Profiler(mRegime, mContext, progProfiler, netProfiler,
-      // devProfiler);
-
       // Start tracking execution statistics for the method
-      // profiler.startExecutionInfoTracking();
+      Profiler profiler = new Profiler(jarName, m.getName(), ExecLocation.LOCAL, config);
+      profiler.start();
 
       // Make sure that the method is accessible
       Object result = null;
       long startTime = System.nanoTime();
       m.setAccessible(true);
       result = m.invoke(o, pValues); // Access it
-      long mPureLocalDuration = System.nanoTime() - startTime;
+      long pureLocalDuration = System.nanoTime() - startTime;
       log.info("LOCAL " + m.getName() + ": Actual Invocation duration - "
-          + mPureLocalDuration / Constants.MEGA + "ms");
+          + pureLocalDuration / Constants.MEGA + "ms");
 
       // Collect execution statistics
-      // profiler.stopAndLogExecutionInfoTracking(prepareDataDuration, mPureLocalDuration);
-      // lastLogRecord = profiler.lastLogRecord;
+      profiler.stop(prepareDataDur, pureLocalDuration);
 
       return result;
     }
@@ -466,33 +499,26 @@ public class DFE {
         SecurityException, ClassNotFoundException, NoSuchMethodException {
       Object result = null;
 
-      // ProgramProfiler progProfiler = new ProgramProfiler(mAppName, m.getName());
-      // DeviceProfiler devProfiler = new DeviceProfiler(mContext);
-      // NetworkProfiler netProfiler = new NetworkProfiler();
-      // Profiler profiler = new Profiler(mRegime, mContext, progProfiler, netProfiler,
-      // devProfiler);
-
       // Start tracking execution statistics for the method
-      // profiler.startExecutionInfoTracking();
+      Profiler profiler = new Profiler(jarName, m.getName(), ExecLocation.REMOTE, config);
+      profiler.start();
 
       try {
         long startTime = System.nanoTime();
-        vmOs.write(Commands.AC_OFFLOAD_REQ_AS);
-        result = sendAndExecute(m, pValues, o);
+        vmOs.write(RapidMessages.AC_OFFLOAD_REQ_AS);
+        ResultContainer resultContainer = sendAndExecute(m, pValues, o);
+        result = resultContainer.functionResult;
 
         long remoteDuration = System.nanoTime() - startTime;
         log.info("REMOTE " + m.getName() + ": Actual Send-Receive duration - "
             + remoteDuration / Constants.MEGA + "ms");
         // Collect execution statistics
-        // profiler.stopAndLogExecutionInfoTracking(prepareDataDuration, mPureRemoteDuration);
-        // lastLogRecord = profiler.lastLogRecord;
+        profiler.stop(prepareDataDur, resultContainer.pureExecutionDuration);
       } catch (Exception e) {
         // No such host exists, execute locally
         log.error("REMOTE ERROR: " + m.getName() + ": " + e);
         e.printStackTrace();
         result = executeLocally(m, pValues, o);
-        // ConnectionRepair repair = new ConnectionRepair();
-        // repair.start();
       }
 
       return result;
@@ -516,7 +542,7 @@ public class DFE {
      * @throws SecurityException
      * @throws IllegalArgumentException
      */
-    private Object sendAndExecute(Method m, Object[] pValues, Object o)
+    private ResultContainer sendAndExecute(Method m, Object[] pValues, Object o)
         throws IOException, ClassNotFoundException, IllegalArgumentException, SecurityException,
         IllegalAccessException, InvocationTargetException, NoSuchMethodException {
 
@@ -535,7 +561,6 @@ public class DFE {
       // System.nanoTime() - startSend);
 
       ResultContainer container = (ResultContainer) response;
-      Object result;
 
       Class<?>[] pTypes = {Remoteable.class};
       try {
@@ -549,15 +574,17 @@ public class DFE {
         log.warn("Exception received from remote server - " + container.functionResult);
       }
 
-      result = container.functionResult;
-      long mPureRemoteDuration = container.pureExecutionDuration;
+      return container;
 
-      // Estimate the perceived bandwidth
-      // NetworkProfiler.addNewUlRateEstimate(totalTxBytesObject, container.getObjectDuration);
-
-      log.info("Finished remote execution");
-
-      return result;
+      // result = container.functionResult;
+      // long mPureRemoteDuration = container.pureExecutionDuration;
+      //
+      // // Estimate the perceived bandwidth
+      // // NetworkProfiler.addNewUlRateEstimate(totalTxBytesObject, container.getObjectDuration);
+      //
+      // log.info("Finished remote execution");
+      //
+      // return result;
     }
 
     /**
@@ -606,5 +633,19 @@ public class DFE {
    */
   public void setConfig(Configuration config) {
     this.config = config;
+  }
+
+  /**
+   * @return the gvirtusFrontend
+   */
+  public GVirtusFrontend getGvirtusFrontend() {
+    return gVirtusFrontend;
+  }
+
+  /**
+   * @param gvirtusFrontend the gvirtusFrontend to set
+   */
+  public void setGvirtusFrontend(GVirtusFrontend gvirtusFrontend) {
+    this.gVirtusFrontend = gvirtusFrontend;
   }
 }

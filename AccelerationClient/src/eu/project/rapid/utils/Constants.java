@@ -1,4 +1,4 @@
-package eu.project.rapid.common;
+package eu.project.rapid.utils;
 
 /**
  * Default values to use if no configuration file is provided.<br>
@@ -13,6 +13,23 @@ public final class Constants {
   /************ COMMON SIDE ************/
   // The config file should be put on the classpath of the project
   public static final String CONFIG_PROPERTIES = "config.properties";
+  public static final String LOG_FILE_NAME_KEY = "rapid-log";
+  public static final String LOG_FILE_NAME_DEFAULT = "rapid-log.csv";
+  public static final String DB_FILE_NAME_KEY = "rapidDb";
+  public static final String DB_FILE_NAME_DEFAULT = "rapidDb";
+  // DB drivers
+  public static final String DB_JDBC_DRIVER_KEY = "dbDriver";
+  public static final String DB_JDBC_DRIVER_DEFAULT = "com.mysql.jdbc.Driver";
+  public static final String DB_URL_KEY = "dbUrl";
+  public static final String DB_URL_DEFAULT = "jdbc:mysql://localhost/"; // rapidDb?useUnicode=true&useJDBCCompliantTimezoneShift=true&useLegacyDatetimeCode=false&serverTimezone=Europe/Rome";
+  // Database credentials
+  public static final String DB_USER_KEY = "rapidDbUser";
+  public static final String DB_PASS_KEY = "rapidDbPass";
+  // GVirtuS ip and port
+  public static final String GVIRTUS_IP_KEY = "gvirtusIp";
+  public static final String GVIRTUS_PORT_KEY = "gvirtusPort";
+  public static final String GVIRTUS_PORT_DEFAULT = "9991";
+
   public static final String TRUE = "true";
   public static final String FALSE = "false";
   public static final String DS_IP_KEY = "dsIp";
@@ -72,10 +89,6 @@ public final class Constants {
   public static final String CONNECT_SSL_DEFAULT = FALSE;
   public static final String SHARED_PREFS_KEY = "sharedPrefs";
   public static final String SHARED_PREFS_DEFAULT = "sharedPrefs.properties";
-
-  public static enum ExecLocation {
-    LOCAL, REMOTE, HYBRID
-  }
 
   private Constants() {
     throw new AssertionError();

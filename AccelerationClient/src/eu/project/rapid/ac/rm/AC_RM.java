@@ -19,10 +19,11 @@ import java.util.Properties;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
-import eu.project.rapid.common.Commands;
-import eu.project.rapid.common.Configuration;
-import eu.project.rapid.common.Constants;
-import eu.project.rapid.common.VM;
+import eu.project.rapid.common.Clone;
+import eu.project.rapid.common.RapidConstants.REGIME;
+import eu.project.rapid.common.RapidMessages;
+import eu.project.rapid.utils.Configuration;
+import eu.project.rapid.utils.Constants;
 
 /**
  * This class is the common component of the AC project. It takes care of registering with the DS.
@@ -42,7 +43,7 @@ public class AC_RM {
   private Configuration config;
   private Properties sharedPrefs;
   private FileOutputStream sharedPrefsOs;
-  private VM vm;
+  private Clone vm;
   private int userID = -1;
   private final String prevVmFileName = "prevVm.ser"; // The file where the VM will be stored for
                                                       // future use.
@@ -52,8 +53,8 @@ public class AC_RM {
   public AC_RM() {
     // Read the configuration file to know the DS IP, the DS Port, and the port where the AC_RM
     // server should listen.
-    config = new Configuration(AC_RM.class.getSimpleName());
-    prevVmFilePath = config.getRapidClientFolder() + File.separator + prevVmFileName;
+    config = new Configuration(AC_RM.class.getSimpleName(), REGIME.AC);
+    prevVmFilePath = config.getRapidFolder() + File.separator + prevVmFileName;
 
     // The file containing preferences shared by all applications, like userID, etc.
     try {
@@ -111,7 +112,7 @@ public class AC_RM {
         ObjectInputStream ois = new ObjectInputStream(dsSocket.getInputStream())) {
 
       if (vm == null) {
-        oos.writeByte(Commands.AC_REGISTER_NEW_DS);
+        oos.writeByte(RapidMessages.AC_REGISTER_NEW_DS);
         oos.writeInt(userID);
         oos.flush();
 
@@ -136,7 +137,7 @@ public class AC_RM {
 
       } else {
         // Register to previous VM
-        oos.writeByte(Commands.AC_REGISTER_PREV_DS);
+        oos.writeByte(RapidMessages.AC_REGISTER_PREV_DS);
         oos.writeInt(userID);
         oos.flush();
 
@@ -148,7 +149,8 @@ public class AC_RM {
         String vmIp = ois.readUTF();
         int vmPort = ois.readInt();
         int vmSslPort = ois.readInt();
-        vm = new VM(vmId, vmIp, vmPort, vmSslPort);
+        vm = new Clone("", vmIp, vmPort, vmSslPort);
+        vm.setId(vmId);
       }
 
       // Save the userID, etc.
@@ -177,7 +179,7 @@ public class AC_RM {
   private void readPrevVm() {
     try (ObjectInputStream ois = new ObjectInputStream(new FileInputStream(prevVmFilePath));) {
 
-      vm = (VM) ois.readObject();
+      vm = (Clone) ois.readObject();
 
     } catch (IOException | ClassNotFoundException e) {
       log.error("Could not read the VM: " + e);
@@ -210,21 +212,22 @@ public class AC_RM {
 
       ObjectOutputStream oos = new ObjectOutputStream(socket.getOutputStream());
       ObjectInputStream ois = new ObjectInputStream(socket.getInputStream());
-      oos.writeInt(Commands.AC_REGISTER_SLAM);
+      oos.writeInt(RapidMessages.AC_REGISTER_SLAM);
       oos.writeInt(userID);
       // TODO send the QoS parameters
       oos.flush();
 
       int response = ois.readInt();
-      if (response == Commands.OK) {
+      if (response == RapidMessages.OK) {
         log.info("SLAM OK, getting the VM details");
         int vmId = ois.readInt();
         String vmIp = ois.readUTF();
         int vmPort = ois.readInt();
         int vmSslPort = ois.readInt();
 
-        vm = new VM(vmId, vmIp, vmPort, vmSslPort);
-      } else if (response == Commands.ERROR) {
+        vm = new Clone("", vmIp, vmPort, vmSslPort);
+        vm.setId(vmId);
+      } else if (response == RapidMessages.ERROR) {
         log.error("SLAM registration replied with ERROR, VM will be null");
       } else {
         log.error("SLAM registration replied with uknown message, VM will be null");
@@ -266,7 +269,7 @@ public class AC_RM {
           log.info("Received command from app: " + command);
 
           switch (command) {
-            case Commands.AC_HELLO_AC_RM:
+            case RapidMessages.AC_HELLO_AC_RM:
               log.info("An app is asking for VM info");
               oos.writeInt(userID);
 
@@ -274,7 +277,8 @@ public class AC_RM {
               // yet implemented.
               // VM tempVm = new VM(1, InetAddress.getLocalHost().getHostAddress(),
               // config.getAsPort(),
-              VM tempVm = new VM(1, "192.168.0.12", config.getAsPort(), config.getAsPortSsl());
+              Clone tempVm = new Clone("", "127.0.0.1", config.getAsPort(), config.getAsPortSsl());
+              tempVm.setId(1);
               oos.writeObject(tempVm);
 
               // oos.writeObject(vm);

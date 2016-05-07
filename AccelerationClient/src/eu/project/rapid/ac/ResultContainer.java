@@ -1,4 +1,4 @@
-package eu.project.rapid.common;
+package eu.project.rapid.ac;
 
 import java.io.Serializable;
 

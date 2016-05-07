@@ -1,43 +1,43 @@
-package eu.project.rapid.common;
+package eu.project.rapid.utils;
 
-import static eu.project.rapid.common.Constants.AC_RM_PORT_DEFAULT;
-import static eu.project.rapid.common.Constants.AC_RM_PORT_KEY;
-import static eu.project.rapid.common.Constants.ASYMMETRIC_ALG_DEFAULT;
-import static eu.project.rapid.common.Constants.ASYMMETRIC_ALG_KEY;
-import static eu.project.rapid.common.Constants.AS_PORT_DEFAULT;
-import static eu.project.rapid.common.Constants.AS_PORT_KEY;
-import static eu.project.rapid.common.Constants.AS_PORT_SSL_DEFAULT;
-import static eu.project.rapid.common.Constants.AS_PORT_SSL_KEY;
-import static eu.project.rapid.common.Constants.CONFIG_PROPERTIES;
-import static eu.project.rapid.common.Constants.CONNECT_PREV_VM_DEFAULT;
-import static eu.project.rapid.common.Constants.CONNECT_PREV_VM_KEY;
-import static eu.project.rapid.common.Constants.DS_IP_KEY;
-import static eu.project.rapid.common.Constants.DS_PORT_DEFAULT;
-import static eu.project.rapid.common.Constants.DS_PORT_KEY;
-import static eu.project.rapid.common.Constants.RAPID_FOLDER_CLIENT_DEFAULT;
-import static eu.project.rapid.common.Constants.RAPID_FOLDER_CLIENT_KEY;
-import static eu.project.rapid.common.Constants.RAPID_FOLDER_SERVER_DEFAULT;
-import static eu.project.rapid.common.Constants.RAPID_FOLDER_SERVER_KEY;
-import static eu.project.rapid.common.Constants.SHARED_PREFS_DEFAULT;
-import static eu.project.rapid.common.Constants.SHARED_PREFS_KEY;
-import static eu.project.rapid.common.Constants.SLAM_IP_DEFAULT;
-import static eu.project.rapid.common.Constants.SLAM_IP_KEY;
-import static eu.project.rapid.common.Constants.SLAM_PORT_DEFAULT;
-import static eu.project.rapid.common.Constants.SLAM_PORT_KEY;
-import static eu.project.rapid.common.Constants.SSL_CA_TRUSTSTORE_DEFAULT;
-import static eu.project.rapid.common.Constants.SSL_CA_TRUSTSTORE_KEY;
-import static eu.project.rapid.common.Constants.SSL_CERT_ALIAS_DEFAULT;
-import static eu.project.rapid.common.Constants.SSL_CERT_ALIAS_KEY;
-import static eu.project.rapid.common.Constants.SSL_CERT_PASSW_DEFAULT;
-import static eu.project.rapid.common.Constants.SSL_CERT_PASSW_KEY;
-import static eu.project.rapid.common.Constants.SSL_KEYSTORE_DEFAULT;
-import static eu.project.rapid.common.Constants.SSL_KEYSTORE_KEY;
-import static eu.project.rapid.common.Constants.SSL_KEYSTORE_PASSW_DEFAULT;
-import static eu.project.rapid.common.Constants.SSL_KEYSTORE_PASSW_KEY;
-import static eu.project.rapid.common.Constants.SYMMETRIC_ALG_DEFAULT;
-import static eu.project.rapid.common.Constants.SYMMETRIC_ALG_KEY;
-import static eu.project.rapid.common.Constants.SYMMETRIC_ALG_KEY_SIZE_DEFAULT;
-import static eu.project.rapid.common.Constants.SYMMETRIC_ALG_KEY_SIZE_KEY;
+import static eu.project.rapid.utils.Constants.AC_RM_PORT_DEFAULT;
+import static eu.project.rapid.utils.Constants.AC_RM_PORT_KEY;
+import static eu.project.rapid.utils.Constants.ASYMMETRIC_ALG_DEFAULT;
+import static eu.project.rapid.utils.Constants.ASYMMETRIC_ALG_KEY;
+import static eu.project.rapid.utils.Constants.AS_PORT_DEFAULT;
+import static eu.project.rapid.utils.Constants.AS_PORT_KEY;
+import static eu.project.rapid.utils.Constants.AS_PORT_SSL_DEFAULT;
+import static eu.project.rapid.utils.Constants.AS_PORT_SSL_KEY;
+import static eu.project.rapid.utils.Constants.CONFIG_PROPERTIES;
+import static eu.project.rapid.utils.Constants.CONNECT_PREV_VM_DEFAULT;
+import static eu.project.rapid.utils.Constants.CONNECT_PREV_VM_KEY;
+import static eu.project.rapid.utils.Constants.DS_IP_KEY;
+import static eu.project.rapid.utils.Constants.DS_PORT_DEFAULT;
+import static eu.project.rapid.utils.Constants.DS_PORT_KEY;
+import static eu.project.rapid.utils.Constants.RAPID_FOLDER_CLIENT_DEFAULT;
+import static eu.project.rapid.utils.Constants.RAPID_FOLDER_CLIENT_KEY;
+import static eu.project.rapid.utils.Constants.RAPID_FOLDER_SERVER_DEFAULT;
+import static eu.project.rapid.utils.Constants.RAPID_FOLDER_SERVER_KEY;
+import static eu.project.rapid.utils.Constants.SHARED_PREFS_DEFAULT;
+import static eu.project.rapid.utils.Constants.SHARED_PREFS_KEY;
+import static eu.project.rapid.utils.Constants.SLAM_IP_DEFAULT;
+import static eu.project.rapid.utils.Constants.SLAM_IP_KEY;
+import static eu.project.rapid.utils.Constants.SLAM_PORT_DEFAULT;
+import static eu.project.rapid.utils.Constants.SLAM_PORT_KEY;
+import static eu.project.rapid.utils.Constants.SSL_CA_TRUSTSTORE_DEFAULT;
+import static eu.project.rapid.utils.Constants.SSL_CA_TRUSTSTORE_KEY;
+import static eu.project.rapid.utils.Constants.SSL_CERT_ALIAS_DEFAULT;
+import static eu.project.rapid.utils.Constants.SSL_CERT_ALIAS_KEY;
+import static eu.project.rapid.utils.Constants.SSL_CERT_PASSW_DEFAULT;
+import static eu.project.rapid.utils.Constants.SSL_CERT_PASSW_KEY;
+import static eu.project.rapid.utils.Constants.SSL_KEYSTORE_DEFAULT;
+import static eu.project.rapid.utils.Constants.SSL_KEYSTORE_KEY;
+import static eu.project.rapid.utils.Constants.SSL_KEYSTORE_PASSW_DEFAULT;
+import static eu.project.rapid.utils.Constants.SSL_KEYSTORE_PASSW_KEY;
+import static eu.project.rapid.utils.Constants.SYMMETRIC_ALG_DEFAULT;
+import static eu.project.rapid.utils.Constants.SYMMETRIC_ALG_KEY;
+import static eu.project.rapid.utils.Constants.SYMMETRIC_ALG_KEY_SIZE_DEFAULT;
+import static eu.project.rapid.utils.Constants.SYMMETRIC_ALG_KEY_SIZE_KEY;
 
 import java.io.File;
 import java.io.IOException;
@@ -61,27 +61,48 @@ import javax.net.ssl.TrustManagerFactory;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+
+import eu.project.rapid.common.Clone;
+import eu.project.rapid.common.RapidConstants.REGIME;
 // import org.bouncycastle.jce.provider.BouncyCastleProvider;
 
+/**
+ * FIXME: Delete this class and use only configuration from Rapid-Common project.
+ * 
+ * @author sokol
+ *
+ */
 public final class Configuration {
 
-  // static {
-  // Security.insertProviderAt(new BouncyCastleProvider(), 1);
-  // }
-
   private Logger log;
+  private REGIME regime;
+
+  private Clone vm;
 
   // Common variables
   private Properties props;
   private String userHomeFolder;
-  private String rapidClientFolder;
-  private String rapidServerFolder;
+  private String rapidFolder;
+  private String rapidLogFile;
+
+  // DB related variables
+  private String rapidDbName;
+  private String dbDriver;
+  private String dbUrl;
+  private String dbUser;
+  private String dbPass;
+
   private int asPort;
   private int asPortSsl;
+
   private String dsIp;
   private int dsPort;
+
   private String slamIp;
   private int slamPort;
+
+  private String gvirtusIp;
+  private int gvirtusPort;
 
   // Client only variables
   private int acRmPort; // The port where the AC_RM will listen for clients (apps) to ask for info.
@@ -110,11 +131,13 @@ public final class Configuration {
   // starts running and registering with the DS.
   private boolean connectToPrevVm = false;
   private boolean connectSsl = false;
+  private int clonePortBandwidthTest = 4321;
 
   private String TAG;
 
-  public Configuration(String tag) {
-    this.TAG = Configuration.class.getSimpleName() + "-" + tag;
+  public Configuration(String callerTag, REGIME regime) {
+    this.regime = regime;
+    this.TAG = Configuration.class.getSimpleName() + "-" + callerTag + "-" + regime.toString();
     log = LogManager.getLogger(this.TAG);
 
     log.info("Reading the configuration file");
@@ -145,24 +168,44 @@ public final class Configuration {
         log.info(SLAM_PORT_KEY + ": " + slamPort);
 
         // RAPID folder configuration
-        rapidClientFolder = props.getProperty(RAPID_FOLDER_CLIENT_KEY, RAPID_FOLDER_CLIENT_DEFAULT);
-        rapidClientFolder = userHomeFolder + File.separator + rapidClientFolder;
+        if (regime == REGIME.AC) {
+          rapidFolder = props.getProperty(RAPID_FOLDER_CLIENT_KEY, RAPID_FOLDER_CLIENT_DEFAULT);
+          rapidFolder = userHomeFolder + File.separator + rapidFolder;
+        } else if (regime == REGIME.AS) {
+          rapidFolder = props.getProperty(RAPID_FOLDER_SERVER_KEY, RAPID_FOLDER_SERVER_DEFAULT);
+          rapidFolder = userHomeFolder + File.separator + rapidFolder;
+        }
 
-        rapidServerFolder = props.getProperty(RAPID_FOLDER_SERVER_KEY, RAPID_FOLDER_SERVER_DEFAULT);
-        rapidServerFolder = userHomeFolder + File.separator + rapidServerFolder;
+        rapidLogFile =
+            props.getProperty(Constants.LOG_FILE_NAME_KEY, Constants.LOG_FILE_NAME_DEFAULT);
+        rapidLogFile = userHomeFolder + File.separator + rapidLogFile;
+
+        // DB variables
+        rapidDbName = props.getProperty(Constants.DB_FILE_NAME_KEY, Constants.DB_FILE_NAME_DEFAULT);
+        dbDriver =
+            props.getProperty(Constants.DB_JDBC_DRIVER_KEY, Constants.DB_JDBC_DRIVER_DEFAULT);
+        dbUrl = props.getProperty(Constants.DB_URL_KEY, Constants.DB_URL_DEFAULT);
+        // User and pass should not be null, otherwise DB will not work
+        dbUser = props.getProperty(Constants.DB_USER_KEY).trim();
+        dbPass = props.getProperty(Constants.DB_PASS_KEY).trim();
+        // assert (dbUser != null && dbPass != null);
 
         // AC_RM configuration listening port
         acRmPort = Integer.parseInt(props.getProperty(AC_RM_PORT_KEY, AC_RM_PORT_DEFAULT));
         sharedPrefsFile = props.getProperty(SHARED_PREFS_KEY, SHARED_PREFS_DEFAULT);
-        sharedPrefsFile = rapidClientFolder + File.separator + sharedPrefsFile;
+        sharedPrefsFile = rapidFolder + File.separator + sharedPrefsFile;
 
         connectToPrevVm =
             props.getProperty(CONNECT_PREV_VM_KEY, CONNECT_PREV_VM_DEFAULT).equals(Constants.TRUE);
 
-        connectSsl = props.getProperty(Constants.CONNECT_SSL_KEY, Constants.CONNECT_SSL_DEFAULT)
-            .equals(Constants.TRUE);
+        // GVirtuS ip and port
+        gvirtusIp = props.getProperty(Constants.GVIRTUS_IP_KEY);
+        gvirtusPort = Integer.parseInt(
+            props.getProperty(Constants.GVIRTUS_PORT_KEY, Constants.GVIRTUS_PORT_DEFAULT));
 
         // SSL parameters
+        connectSsl = props.getProperty(Constants.CONNECT_SSL_KEY, Constants.CONNECT_SSL_DEFAULT)
+            .equals(Constants.TRUE);
         initializeCrypto();
 
       } else {
@@ -257,31 +300,17 @@ public final class Configuration {
   }
 
   /**
-   * @return the rapidClientFolder
+   * @return the rapidFolder
    */
-  public String getRapidClientFolder() {
-    return rapidClientFolder;
+  public String getRapidFolder() {
+    return rapidFolder;
   }
 
   /**
-   * @param rapidFolder the rapidClientFolder to set
+   * @param rapidFolder the rapidFolder to set
    */
-  public void setRapidClientFolder(String rapidFolder) {
-    this.rapidClientFolder = rapidFolder;
-  }
-
-  /**
-   * @return the rapidServerFolder
-   */
-  public String getRapidServerFolder() {
-    return rapidServerFolder;
-  }
-
-  /**
-   * @param rapidFolder the rapidServerFolder to set
-   */
-  public void setRapidServerFolder(String rapidFolder) {
-    this.rapidServerFolder = rapidFolder;
+  public void setRapidFolder(String rapidFolder) {
+    this.rapidFolder = rapidFolder;
   }
 
   /**
@@ -604,5 +633,160 @@ public final class Configuration {
    */
   public void setConnectSsl(boolean connectSsl) {
     this.connectSsl = connectSsl;
+  }
+
+  /**
+   * @return the regime
+   */
+  public REGIME getRegime() {
+    return regime;
+  }
+
+  /**
+   * @param regime the regime to set
+   */
+  public void setRegime(REGIME regime) {
+    this.regime = regime;
+  }
+
+  /**
+   * @return the rapidLogFile
+   */
+  public String getRapidLogFile() {
+    return rapidLogFile;
+  }
+
+  /**
+   * @param rapidLogFile the rapidLogFile to set
+   */
+  public void setRapidLogFile(String rapidLogFile) {
+    this.rapidLogFile = rapidLogFile;
+  }
+
+  /**
+   * @return the rapidDbName
+   */
+  public String getRapidDbName() {
+    return rapidDbName;
+  }
+
+  /**
+   * @param rapidDbName the rapidDbName to set
+   */
+  public void setRapidDbName(String rapidDbName) {
+    this.rapidDbName = rapidDbName;
+  }
+
+  /**
+   * @return the dbDriver
+   */
+  public String getDbDriver() {
+    return dbDriver;
+  }
+
+  /**
+   * @param dbDriver the dbDriver to set
+   */
+  public void setDbDriver(String dbDriver) {
+    this.dbDriver = dbDriver;
+  }
+
+  /**
+   * @return the dbUrl
+   */
+  public String getDbUrl() {
+    return dbUrl;
+  }
+
+  /**
+   * @param dbUrl the dbUrl to set
+   */
+  public void setDbUrl(String dbUrl) {
+    this.dbUrl = dbUrl;
+  }
+
+  /**
+   * @return the dbUser
+   */
+  public String getDbUser() {
+    return dbUser;
+  }
+
+  /**
+   * @param dbUser the dbUser to set
+   */
+  public void setDbUser(String dbUser) {
+    this.dbUser = dbUser;
+  }
+
+  /**
+   * @return the dbPass
+   */
+  public String getDbPass() {
+    return dbPass;
+  }
+
+  /**
+   * @param dbPass the dbPass to set
+   */
+  public void setDbPass(String dbPass) {
+    this.dbPass = dbPass;
+  }
+
+  /**
+   * @return the vm
+   */
+  public Clone getVm() {
+    return vm;
+  }
+
+  /**
+   * @param vm the vm to set
+   */
+  public void setVm(Clone vm) {
+    this.vm = vm;
+  }
+
+
+  /**
+   * @return the clonePortBandwidthTest
+   */
+  public int getClonePortBandwidthTest() {
+    return clonePortBandwidthTest;
+  }
+
+  /**
+   * @param clonePortBandwidthTest the clonePortBandwidthTest to set
+   */
+  public void setClonePortBandwidthTest(int clonePortBandwidthTest) {
+    this.clonePortBandwidthTest = clonePortBandwidthTest;
+  }
+
+  /**
+   * @return the gvirtusIp
+   */
+  public String getGvirtusIp() {
+    return gvirtusIp;
+  }
+
+  /**
+   * @param gvirtusIp the gvirtusIp to set
+   */
+  public void setGvirtusIp(String gvirtusIp) {
+    this.gvirtusIp = gvirtusIp;
+  }
+
+  /**
+   * @return the gvirtusPort
+   */
+  public int getGvirtusPort() {
+    return gvirtusPort;
+  }
+
+  /**
+   * @param gvirtusPort the gvirtusPort to set
+   */
+  public void setGvirtusPort(int gvirtusPort) {
+    this.gvirtusPort = gvirtusPort;
   }
 }

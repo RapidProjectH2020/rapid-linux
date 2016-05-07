@@ -1,4 +1,4 @@
-package eu.project.rapid.common;
+package eu.project.rapid.utils;
 
 import java.io.File;
 import java.io.FileNotFoundException;
