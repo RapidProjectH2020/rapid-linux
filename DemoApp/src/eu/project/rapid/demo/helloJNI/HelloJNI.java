@@ -4,7 +4,7 @@ import java.lang.reflect.Method;
 
 import eu.project.rapid.ac.DFE;
 import eu.project.rapid.ac.Remoteable;
-import eu.project.rapid.common.Utils;
+import eu.project.rapid.utils.Utils;
 
 public class HelloJNI extends Remoteable {
 
@@ -15,7 +15,8 @@ public class HelloJNI extends Remoteable {
     if (Utils.isMac()) {
       System.load("/Users/sokol/rapid-client/demo/HelloJNI.jnilib");
     } else if (Utils.isLinux()) {
-      System.err.println("Sokol: library not compiled for Linux.");
+      System.load("/home/gjigandi/rapid-client/libhellojni.so");
+      // System.err.println("Sokol: library not compiled for Linux.");
     } else if (Utils.isWindows()) {
       System.err.println("Sokol: library not compiled for Windows.");
     }
