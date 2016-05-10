@@ -33,10 +33,21 @@ public class DemoApp extends Remoteable {
     GVirtusDemo gVirtusDemo = new GVirtusDemo(dfe);
     for (int i = 0; i < nrIterations; i++) {
       try {
-        log.info("Running GVirtuS demo");
+        log.info("Running GVirtuS deviceQuery() demo");
         gVirtusDemo.deviceQuery();
+        log.info("Successfully executed GVirtuS matrixMul() demo");
       } catch (IOException e) {
-        log.error("Not possible to execute GVirtuS demo: " + e);
+        log.error("Not possible to execute GVirtuS deviceQuery() demo: " + e);
+      }
+    }
+
+    for (int i = 0; i < nrIterations; i++) {
+      try {
+        log.info("Running GVirtuS matrixMul() demo");
+        gVirtusDemo.matrixMul();
+        log.info("Successfully executed GVirtuS matrixMul() demo");
+      } catch (IOException e) {
+        log.error("Not possible to execute GVirtuS matrixMul() demo: " + e);
       }
     }
   }

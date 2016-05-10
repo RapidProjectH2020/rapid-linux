@@ -1,10 +1,12 @@
 
 package eu.project.rapid.demoapp;
 
+import java.io.BufferedReader;
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.nio.charset.Charset;
 import java.nio.file.Files;
-import java.nio.file.Path;
 import java.nio.file.Paths;
 
 import eu.project.rapid.ac.DFE;
@@ -42,18 +44,30 @@ public class GVirtusDemo {
     // matrixMul();
   }
 
-  public static float[] constantInit(float[] data, int size, float val) {
+  private float[] constantInit(float[] data, int size, float val) {
     for (int i = 0; i < size; ++i) {
       data[i] = val;
     }
     return data;
   }
 
-
-
-  static String readFile(String path, Charset encoding) throws IOException {
+  private String readFile(String path, Charset encoding) throws IOException {
     byte[] encoded = Files.readAllBytes(Paths.get(path));
     return new String(encoded, encoding);
+  }
+
+  private String readResourceFileAsString(String fileName) throws IOException {
+    StringBuilder buf = new StringBuilder();
+
+    InputStream is = getClass().getClassLoader().getResourceAsStream(fileName);
+    BufferedReader br = new BufferedReader(new InputStreamReader(is));
+    String temp;
+    while ((temp = br.readLine()) != null) {
+      buf.append(temp);
+    }
+    br.close();
+
+    return buf.toString();
   }
 
   public void matrixMul() throws IOException {
@@ -78,10 +92,14 @@ public class GVirtusDemo {
     String context = ctx.cuCtxCreate(res, 0, 0);
     System.out.println("Context pointer is " + context);
 
-    String p = "/src/gvirtusfe/matrixMul_kernel64.ptx";
-    Path currentRelativePath = Paths.get("");
-    String s = currentRelativePath.toAbsolutePath().toString();
-    String ptxSource = readFile(s + p, Charset.defaultCharset());
+    // String p = "/src/gvirtusfe/matrixMul_kernel64.ptx";
+    // Path currentRelativePath = Paths.get("");
+    // String s = currentRelativePath.toAbsolutePath().toString();
+    // String ptxSource = readFile(s + p, Charset.defaultCharset());
+
+    String ptxFile = "cuda-kernels/matrixMul_kernel64.ptx";
+    String ptxSource = readResourceFileAsString(ptxFile);
+
     int jitNumOptions = 3;
     int[] jitOptions = new int[jitNumOptions];
 
@@ -117,8 +135,6 @@ public class GVirtusDemo {
     int WC = WB; // Matrix C width
     int HC = HA; // Matrix C height
     int size_A = WA * HA;
-
-
 
     int mem_size_A = Float.SIZE / 8 * size_A;
     float[] h_A = new float[mem_size_A];
@@ -233,7 +249,6 @@ public class GVirtusDemo {
   }
 
   public void runtimeMemoryMalloc() throws IOException {
-
     Result res = new Result();
     CudaRt_memory mem = new CudaRt_memory(dfe);
     String pointerA = mem.cudaMalloc(res, 25);
