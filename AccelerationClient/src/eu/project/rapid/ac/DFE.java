@@ -122,8 +122,6 @@ public class DFE {
           // Try to find a way here to get the ip address of the physical machine.
           // config.setGvirtusIp(TODO: ip address of the physical machine where the VM is running);
         }
-        // Create a gvirtus frontend object that is responsible for executing the CUDA code.
-        gVirtusFrontend = new GVirtusFrontend(config.getGvirtusIp(), config.getGvirtusPort());
 
         NetworkProfiler.startNetworkMonitoring(config);
 
@@ -147,6 +145,11 @@ public class DFE {
         log.debug("Network profiling finished.");
 
         registerWithAs();
+      }
+
+      if (config.getGvirtusIp() != null) {
+        // Create a gvirtus frontend object that is responsible for executing the CUDA code.
+        gVirtusFrontend = new GVirtusFrontend(config.getGvirtusIp(), config.getGvirtusPort());
       }
     }
   }
