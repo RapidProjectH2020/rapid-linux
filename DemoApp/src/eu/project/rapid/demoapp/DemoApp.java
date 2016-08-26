@@ -1,105 +1,77 @@
 package eu.project.rapid.demoapp;
 
-import java.io.IOException;
-import java.lang.reflect.Method;
-
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 import eu.project.rapid.ac.DFE;
-import eu.project.rapid.ac.Remoteable;
 import eu.project.rapid.demo.helloJNI.HelloJNI;
 
-public class DemoApp extends Remoteable {
-
-  private static final long serialVersionUID = 5541949167439814577L;
-  private transient static DFE dfe;
-  private static final int nrIterations = 1;
+public class DemoApp {
+  private DFE dfe;
+  private int nrTests = 1;
 
   private final static Logger log = LogManager.getLogger(DemoApp.class.getSimpleName());
 
   public DemoApp() {
     dfe = new DFE();
 
-    for (int i = 0; i < nrIterations; i++) {
-      helloWorld();
-    }
+    // log.info("Testing JNI...");
+    // testHelloJni();
 
-    for (int i = 0; i < nrIterations; i++) {
-      int sum = sumTwoNums(7, 12);
-      System.out.println("The sum is " + sum);
-    }
+    log.info("Testing HelloWorld...");
+    testHelloWorld();
 
-    GVirtusDemo gVirtusDemo = new GVirtusDemo(dfe);
-    for (int i = 0; i < nrIterations; i++) {
-      try {
-        log.info("Running GVirtuS deviceQuery() demo");
-        gVirtusDemo.deviceQuery();
-        log.info("Successfully executed GVirtuS matrixMul() demo");
-      } catch (IOException e) {
-        log.error("Not possible to execute GVirtuS deviceQuery() demo: " + e);
-      }
-    }
+    log.info("Testing Sum of two numbers...");
+    testSumNum();
 
-    for (int i = 0; i < nrIterations; i++) {
-      try {
-        log.info("Running GVirtuS matrixMul() demo");
-        gVirtusDemo.matrixMul();
-        log.info("Successfully executed GVirtuS matrixMul() demo");
-      } catch (IOException e) {
-        log.error("Not possible to execute GVirtuS matrixMul() demo: " + e);
-      }
+    log.info("Testing NQueens...");
+    testNQueens();
+
+    dfe.destroy();
+
+    // testGvirtus();
+  }
+
+  private void testHelloWorld() {
+    HelloWorld h = new HelloWorld(dfe);
+    h.helloWorld();
+  }
+
+  private void testHelloJni() {
+    HelloJNI helloJni = new HelloJNI(dfe);
+    for (int i = 0; i < nrTests; i++) {
+      int result = helloJni.printJava();
+      log.info("The result of the native call: " + result);
     }
   }
 
-  public int sumTwoNums(int a, int b) {
-    Method toExecute;
-    Class<?>[] parameterTypes = {int.class, int.class};
-    Object[] parameterValues = {a, b};
+  private void testSumNum() {
+    TestSumNum t = new TestSumNum(dfe);
+    int a = 3, b = 5;
+    int result = t.sumTwoNums(a, b);
+    log.info("Result of sum of two nums test: " + a + " + " + b + " = " + result);
+  }
+
+  private void testNQueens() {
+
+    NQueens q = new NQueens(dfe);
     int result = -1;
+    int[] nrQueens = {4, 5, 6, 7, 8};
+    int[] nrTests = {1, 1, 1, 1, 1};
 
-    try {
-      toExecute = this.getClass().getDeclaredMethod("localsumTwoNums", parameterTypes);
-      result = (int) dfe.execute(toExecute, parameterValues, this);
-    } catch (NoSuchMethodException | SecurityException e) {
-      // TODO Auto-generated catch block
-      e.printStackTrace();
-    }
-
-    return result;
-  }
-
-  public int localsumTwoNums(int a, int b) {
-    return a + b;
-  }
-
-
-  public void helloWorld() {
-    Class<?>[] parameterTypes = {};
-    try {
-      dfe.execute(this.getClass().getDeclaredMethod("rapidhelloWorld", parameterTypes), this);
-    } catch (NoSuchMethodException | SecurityException e) {
-      // TODO Auto-generated catch block
-      e.printStackTrace();
+    for (int i = 0; i < nrQueens.length; i++) {
+      for (int j = 0; j < nrTests[i]; j++) {
+        result = q.solveNQueens(nrQueens[i]);
+      }
+      log.info("Result of NQueens(" + nrQueens[i] + "): " + result);
     }
   }
 
-  public void rapidhelloWorld() {
-    System.out.println("Hello World!");
-  }
-
-  @Override
-  public void copyState(Remoteable state) {
-    System.out.println("Inside copyState");
+  private void testGvirtus() {
+    new GVirtusDemo(dfe);
   }
 
   public static void main(String[] argv) {
     new DemoApp();
-
-    HelloJNI helloJni = new HelloJNI(dfe);
-    for (int i = 0; i < nrIterations; i++) {
-      int result = helloJni.printJava();
-      System.out.println("The result of the native call: " + result);
-    }
   }
 }

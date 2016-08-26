@@ -216,12 +216,14 @@ public class NetworkProfiler {
 
         @Override
         public void run() {
-          boolean threeSec = false;
-          while (!threeSec) {
+          long t0 = System.nanoTime();
+          long elapsed = 0;
+          while (elapsed < 3000) {
             try {
-              Thread.sleep(3000);
-              threeSec = true;
+              Thread.sleep(3000 - elapsed);
             } catch (InterruptedException e1) {
+            } finally {
+              elapsed = (System.nanoTime() - t0) / 1000000;
             }
           }
           // After 3 seconds close the streams to force an exception on the listening InputStream

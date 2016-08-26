@@ -368,6 +368,8 @@ public class AppHandler {
       log.info("Succesfully read the " + totalRead + " bytes of the jar file, extracting now.");
       extractJarFile(appFolder, jarFile);
 
+      // The client is waiting for an ACK that the jar file was correctly received and extracted.
+      os.write(1);
     } catch (FileNotFoundException e) {
       log.error("Could not create jar file: " + e);
     } catch (IOException e) {

@@ -45,7 +45,7 @@
               </filters>
               <transformers>
                 <transformer>
-                  <mainClass>eu.project.rapid.as.AS</mainClass>
+                  <mainClass>eu.project.rapid.as.AccelerationServer</mainClass>
                 </transformer>
               </transformers>
             </configuration>

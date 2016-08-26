@@ -14,12 +14,12 @@ import org.apache.logging.log4j.Logger;
 
 import eu.project.rapid.utils.Configuration;
 
-public class AsSslThread implements Runnable {
+public class ClientListenerSSL implements Runnable {
 
-  private static final Logger log = LogManager.getLogger(AsSslThread.class.getSimpleName());
+  private static final Logger log = LogManager.getLogger(ClientListenerSSL.class.getSimpleName());
   private Configuration config;
 
-  public AsSslThread(Configuration config) {
+  public ClientListenerSSL(Configuration config) {
     this.config = config;
   }
 

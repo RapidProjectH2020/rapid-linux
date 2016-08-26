@@ -33,7 +33,7 @@ import eu.project.rapid.common.Clone;
 import eu.project.rapid.common.RapidConstants.ExecLocation;
 import eu.project.rapid.common.RapidConstants.REGIME;
 import eu.project.rapid.common.RapidMessages;
-import eu.project.rapid.gvirtusfe.GVirtusFrontend;
+import eu.project.rapid.gvirtusfe.Frontend;
 import eu.project.rapid.utils.Configuration;
 import eu.project.rapid.utils.Constants;
 import eu.project.rapid.utils.Utils;
@@ -52,14 +52,16 @@ public class DFE {
 
   // Design and Space Explorer is responsible for deciding where to execute the method.
   private DSE dse;
+  private ExecLocation userChoice = ExecLocation.DYNAMIC;
 
   // GVirtuS frontend is responsible for running the CUDA code.
-  private GVirtusFrontend gVirtusFrontend;
+  private Frontend gVirtusFrontend;
 
   // Variables related to the app using the DFE
   private String jarFilePath;
   private String jarName; // The jar name without ".jar" extension
   private long jarSize;
+  private File jarFile;
   private int userID;
   private int nrVMs = 1;
   private boolean connectedWithAs;
@@ -74,7 +76,9 @@ public class DFE {
 
   // If the developer has implemented the prepareData method then we measure how much it takes to
   // prepare the data.
-  private long prepareDataDur = -1;
+  private double localDataFraction = 1;
+  private Method prepareDataMethod = null;
+  private long prepareDataDuration = -1;
 
   // Constructor to be used by the AS
   public DFE(boolean serverSide) {}
@@ -91,6 +95,20 @@ public class DFE {
       log.error("Could not create folder " + config.getRapidFolder() + ": " + e);
     }
 
+    // Get the name of the jar file of this app. It will be needed so that the jar can be sent
+    // to the AS for offload executions.
+    CodeSource codeSource = DFE.class.getProtectionDomain().getCodeSource();
+    if (codeSource != null) {
+      jarFilePath = codeSource.getLocation().getFile();// getPath();
+      jarFile = new File(jarFilePath);
+      jarSize = jarFile.length();
+      log.info("jarFilePath: " + jarFilePath + ", jarSize: " + jarSize + " bytes");
+      jarName = jarFilePath.substring(jarFilePath.lastIndexOf(File.separator) + 1,
+          jarFilePath.lastIndexOf("."));
+    } else {
+      log.warn("Could not get the CodeSource object needed to get the executable of the app");
+    }
+
     // Starts the AC_RM component, which is unique for each device and handles the registration
     // mechanism with the DS.
     startAcRm();
@@ -103,7 +121,7 @@ public class DFE {
       config.setVm(vm);
       log.info("Received VM " + vm + " from AC_RM, connecting now...");
 
-      if (config.isConnectSsl()) {
+      if (config.isConnectSsl() && vm.isCryptoPossible()) {
         connectedWithAs = connectWitAsSsl();
         if (!connectedWithAs) {
           log.error("It was not possible to connect with the VM using SSL, connecting in clear...");
@@ -143,13 +161,12 @@ public class DFE {
           }
         }
         log.debug("Network profiling finished.");
-
         registerWithAs();
       }
 
       if (config.getGvirtusIp() != null) {
         // Create a gvirtus frontend object that is responsible for executing the CUDA code.
-        gVirtusFrontend = new GVirtusFrontend(config.getGvirtusIp(), config.getGvirtusPort());
+        gVirtusFrontend = new Frontend(config.getGvirtusIp(), config.getGvirtusPort());
       }
     }
   }
@@ -194,33 +211,21 @@ public class DFE {
   }
 
   private void registerWithAs() {
-    // Get the name of the jar file of this app. It will be needed so that the jar can be sent to
-    // the AS for offload executions.
-    CodeSource codeSource = DFE.class.getProtectionDomain().getCodeSource();
-    if (codeSource != null) {
-      jarFilePath = codeSource.getLocation().getFile();// getPath();
-      File jarFile = new File(jarFilePath);
-      jarSize = jarFile.length();
-      log.info("jarFilePath: " + jarFilePath + ", jarSize: " + jarSize + " bytes");
-      jarName = jarFilePath.substring(jarFilePath.lastIndexOf(File.separator) + 1,
-          jarFilePath.lastIndexOf("."));
-      try {
-        vmOs.write(RapidMessages.AC_REGISTER_AS);
-        vmOos.writeUTF(jarName);
-        vmOos.writeLong(jarSize);
-        vmOos.flush();
-        int response = vmIs.read();
-        if (response == RapidMessages.AS_APP_PRESENT_AC) {
-          log.info("The app is already present on the AS, do nothing.");
-        } else if (response == RapidMessages.AS_APP_REQ_AC) {
-          log.info("Should send the app to the AS");
-          sendApp(jarFile);
-        }
-      } catch (IOException e) {
-        log.error("Could not send message to VM: " + e);
+
+    try {
+      vmOs.write(RapidMessages.AC_REGISTER_AS);
+      vmOos.writeUTF(jarName);
+      vmOos.writeLong(jarSize);
+      vmOos.flush();
+      int response = vmIs.read();
+      if (response == RapidMessages.AS_APP_PRESENT_AC) {
+        log.info("The app is already present on the AS, do nothing.");
+      } else if (response == RapidMessages.AS_APP_REQ_AC) {
+        log.info("Should send the app to the AS");
+        sendApp(jarFile);
       }
-    } else {
-      log.warn("Could not get the CodeSource object needed to get the executable of the app");
+    } catch (IOException e) {
+      log.error("Could not send message to VM: " + e);
     }
   }
 
@@ -241,6 +246,7 @@ public class DFE {
         totalRead += read;
       }
 
+      vmIs.read();
       log.info("----- Successfully sent the " + totalRead + " bytes of the jar file.");
     } catch (FileNotFoundException e) {
       log.error("Could not read the jar file: " + e);
@@ -304,7 +310,7 @@ public class DFE {
           log.error("Could not properly receive the VM info from the AC_RM: " + e);
         }
 
-        log.info("Finished talking to AC_RM, received userID=" + userID + " and VM=" + vm);
+        log.info("------ Finished talking to AC_RM, received userID=" + userID + " and VM=" + vm);
         connectionAcRmSuccess = true;
       } catch (IOException e) {
         log.warn("AC_RM is not started yet, retrying after 2 seconds");
@@ -383,11 +389,20 @@ public class DFE {
     Object result = null;
 
     // First find where to execute the method.
-    ExecLocation execLocation = dse.findExecLocation(jarName, m.getName());
+    ExecLocation execLocation = dse.findExecLocationDbCache(jarName, m.getName());
     ExecutorService executor = Executors.newFixedThreadPool(2);
 
+    try {
+      // long s = System.nanoTime();
+      prepareDataMethod = o.getClass().getDeclaredMethod("prepareData", double.class);
+      prepareDataMethod.setAccessible(true);
+    } catch (NoSuchMethodException e) {
+      log.warn("The method prepareData() does not exist");
+      prepareDataMethod = null;
+    }
+
     switch (execLocation) {
-      case HYBRID:
+      case DYNAMIC:
         log.error("Hybrid execution not implemented yet");
         break;
 
@@ -464,6 +479,14 @@ public class DFE {
     private Object executeLocally(Method m, Object[] pValues, Object o)
         throws IllegalArgumentException, IllegalAccessException, InvocationTargetException {
 
+      localDataFraction = 1;
+      if (prepareDataMethod != null) {
+        // RapidUtils.sendAnimationMsg(config, RapidMessages.AC_PREPARE_DATA);
+        long s = System.nanoTime();
+        prepareDataMethod.invoke(o, localDataFraction);
+        prepareDataDuration = System.nanoTime() - s;
+      }
+
       // Start tracking execution statistics for the method
       Profiler profiler = new Profiler(jarName, m.getName(), ExecLocation.LOCAL, config);
       profiler.start();
@@ -478,7 +501,7 @@ public class DFE {
           + pureLocalDuration / Constants.MEGA + "ms");
 
       // Collect execution statistics
-      profiler.stop(prepareDataDur, pureLocalDuration);
+      profiler.stop(prepareDataDuration, pureLocalDuration);
 
       return result;
     }
@@ -502,6 +525,14 @@ public class DFE {
         SecurityException, ClassNotFoundException, NoSuchMethodException {
       Object result = null;
 
+      localDataFraction = 0;
+      if (prepareDataMethod != null) {
+        // RapidUtils.sendAnimationMsg(config, RapidMessages.AC_PREPARE_DATA);
+        long s = System.nanoTime();
+        prepareDataMethod.invoke(o, localDataFraction);
+        prepareDataDuration = System.nanoTime() - s;
+      }
+
       // Start tracking execution statistics for the method
       Profiler profiler = new Profiler(jarName, m.getName(), ExecLocation.REMOTE, config);
       profiler.start();
@@ -516,7 +547,7 @@ public class DFE {
         log.info("REMOTE " + m.getName() + ": Actual Send-Receive duration - "
             + remoteDuration / Constants.MEGA + "ms");
         // Collect execution statistics
-        profiler.stop(prepareDataDur, resultContainer.pureExecutionDuration);
+        profiler.stop(prepareDataDuration, resultContainer.pureExecutionDuration);
       } catch (Exception e) {
         // No such host exists, execute locally
         log.error("REMOTE ERROR: " + m.getName() + ": " + e);
@@ -624,6 +655,10 @@ public class DFE {
     }
   }
 
+  public void destroy() {
+    closeConnection();
+  }
+
   /**
    * @return the config
    */
@@ -641,14 +676,52 @@ public class DFE {
   /**
    * @return the gvirtusFrontend
    */
-  public GVirtusFrontend getGvirtusFrontend() {
+  public Frontend getGvirtusFrontend() {
     return gVirtusFrontend;
   }
 
   /**
    * @param gvirtusFrontend the gvirtusFrontend to set
    */
-  public void setGvirtusFrontend(GVirtusFrontend gvirtusFrontend) {
+  public void setGvirtusFrontend(Frontend gvirtusFrontend) {
     this.gVirtusFrontend = gvirtusFrontend;
+  }
+
+  /**
+   * @return the userChoice
+   */
+  public ExecLocation getUserChoice() {
+    return userChoice;
+  }
+
+  /**
+   * @param userChoice the userChoice to set
+   */
+  public void setUserChoice(ExecLocation userChoice) {
+    this.userChoice = userChoice;
+    if (dse != null) {
+      dse.setUserChoice(userChoice);
+    }
+  }
+
+  public void setUserChoice(String userChoice) {
+    switch (userChoice) {
+      case "LOCAL":
+        this.setUserChoice(ExecLocation.LOCAL);
+        break;
+
+      case "REMOTE":
+        this.setUserChoice(ExecLocation.REMOTE);
+        break;
+
+      case "DYNAMIC":
+        this.setUserChoice(ExecLocation.DYNAMIC);
+        break;
+
+      default:
+        log.error("Wrong user choice: " + userChoice + ". Defaulting to " + ExecLocation.DYNAMIC);
+        this.setUserChoice(ExecLocation.DYNAMIC);
+        break;
+    }
   }
 }

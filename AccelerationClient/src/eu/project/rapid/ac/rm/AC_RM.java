@@ -270,14 +270,14 @@ public class AC_RM {
 
           switch (command) {
             case RapidMessages.AC_HELLO_AC_RM:
-              log.info("An app is asking for VM info");
+              log.info("An app is asking for VM info ------");
               oos.writeInt(userID);
 
               // FIXME: For the moment I send a temporary VM since the DS and SLAM component are not
               // yet implemented.
               // VM tempVm = new VM(1, InetAddress.getLocalHost().getHostAddress(),
               // config.getAsPort(),
-              Clone tempVm = new Clone("", "127.0.0.1", config.getAsPort(), config.getAsPortSsl());
+              Clone tempVm = new Clone("", "10.0.0.3", config.getAsPort(), config.getAsPortSsl());
               tempVm.setId(1);
               oos.writeObject(tempVm);
 

@@ -20,21 +20,21 @@ import eu.project.rapid.utils.Utils;
  * device is booted.<br>
  * The AS reads the configuration file and tries to registers to the Directory Server (DS).
  */
-public class AS {
+public class AccelerationServer {
   //
   // static {
   // Security.insertProviderAt(new BouncyCastleProvider(), 1);
   // }
 
-  private static final Logger log = LogManager.getLogger(AS.class.getSimpleName());
+  private static final Logger log = LogManager.getLogger(AccelerationServer.class.getSimpleName());
   private Configuration config;
 
   // The ID of the user that is requesting this VM.
   private int userId = -1;
 
-  public AS() {
+  public AccelerationServer() {
     log.info("Starting the AS");
-    config = new Configuration(AS.class.getSimpleName(), REGIME.AS);
+    config = new Configuration(AccelerationServer.class.getSimpleName(), REGIME.AS);
 
     if (config.getSlamIp() == null) {
       log.warn("The configuration file does not contain the SLAM IP.");
@@ -62,11 +62,11 @@ public class AS {
 
     // Start the clear AS server thread
     log.info("Starting CLEAR thread...");
-    new Thread(new AsClearThread(config)).start();
+    new Thread(new ClientListenerClear(config)).start();
 
     if (config.isCryptoInitialized()) {
       log.info("Starting SSL thread...");
-      new Thread(new AsSslThread(config)).start();
+      new Thread(new ClientListenerSSL(config)).start();
     } else {
       log.warn("SSL thread not started since crypto not initialized");
     }
@@ -163,6 +163,6 @@ public class AS {
   }
 
   public static void main(String[] argv) {
-    new AS();
+    new AccelerationServer();
   }
 }

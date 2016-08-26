@@ -3,19 +3,20 @@ package eu.project.rapid.ac.profilers;
 import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
-import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.List;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
+import eu.project.rapid.ac.db.DB;
+import eu.project.rapid.ac.db.DBCache;
+import eu.project.rapid.ac.db.DBEntry;
 import eu.project.rapid.utils.Configuration;
-import eu.project.rapid.utils.DB;
 
 public class LogRecord {
   private String logFilePath;
-  private DB db;
+  // private DB db;
 
   public String appName;
   public String methodName;
@@ -63,7 +64,7 @@ public class LogRecord {
     dlRate = NetworkProfiler.lastDlRate;
 
     logFilePath = config.getRapidLogFile();
-    db = DB.getInstance(config);
+    // db = DB.getInstance(config);
   }
 
   /**
@@ -73,7 +74,8 @@ public class LogRecord {
     logRecordTime = System.currentTimeMillis();
     log.info(this.toString());
     saveToFile();
-    saveToDB();
+    saveToDbCache();
+    // saveToDB();
   }
 
   private synchronized void saveToFile() {
@@ -101,6 +103,18 @@ public class LogRecord {
     }
   }
 
+  private void saveToDbCache() {
+    DBCache dbCache = DBCache.getDbCache();
+    // public DBEntry(String appName, String methodName, String execLocation, String networkType,
+    // String networkSubType, int ulRate, int dlRate, long execDuration, long execEnergy)
+    DBEntry dbEntry =
+        new DBEntry(appName, methodName, execLocation, networkType, ulRate, dlRate, execDuration);
+    dbCache.insertEntry(dbEntry);
+  }
+
+  /**
+   * @deprecated
+   */
   private void saveToDB() {
     List<String> keys = new ArrayList<>();
     List<String> values = new ArrayList<>();
@@ -137,28 +151,27 @@ public class LogRecord {
     keys.add(DB.KEY_TIMESTAMP);
     values.add(Long.toString(logRecordTime));
 
-    try {
-      if (db.isConnected()) {
-        db.insertEntry(keys, values);
-      } else {
-        log.warn("Not connected to DB, not saving stats about this execution");
-      }
-    } catch (SQLException e) {
-      log.error("Exception while saving entry to DB: " + e);
-    }
+    // try {
+    // if (db.isConnected()) {
+    // db.insertEntry(keys, values);
+    // } else {
+    // log.warn("Not connected to DB, not saving stats about this execution");
+    // }
+    // } catch (SQLException e) {
+    // log.error("Exception while saving entry to DB: " + e);
+    // }
   }
 
   public String toString() {
     StringBuilder s = new StringBuilder();
 
     s.append(appName + ",").append(methodName + ",").append(execLocation + ",")
-        .append(execLocation + ",").append(prepareDataDuration + ",").append(execDuration + ",")
-        .append(pureDuration + ",").append(threadCpuTime + ",").append(instructionCount + ",")
-        .append(methodCount + ",").append(threadAllocSize + ",")
-        .append(threadGcInvocationCount + ",").append(globalGcInvocationCount + ",")
-        .append(networkType + ",").append(networkSubType + ",").append(rtt + ",")
-        .append(ulRate + ",").append(dlRate + ",").append(rxBytes + ",").append(txBytes + ",")
-        .append(logRecordTime);
+        .append(prepareDataDuration + ",").append(execDuration + ",").append(pureDuration + ",")
+        .append(threadCpuTime + ",").append(instructionCount + ",").append(methodCount + ",")
+        .append(threadAllocSize + ",").append(threadGcInvocationCount + ",")
+        .append(globalGcInvocationCount + ",").append(networkType + ",")
+        .append(networkSubType + ",").append(rtt + ",").append(ulRate + ",").append(dlRate + ",")
+        .append(rxBytes + ",").append(txBytes + ",").append(logRecordTime);
 
     return s.toString();
   }

@@ -178,7 +178,7 @@ public final class Configuration {
 
         rapidLogFile =
             props.getProperty(Constants.LOG_FILE_NAME_KEY, Constants.LOG_FILE_NAME_DEFAULT);
-        rapidLogFile = userHomeFolder + File.separator + rapidLogFile;
+        rapidLogFile = rapidFolder + File.separator + rapidLogFile;
 
         // DB variables
         rapidDbName = props.getProperty(Constants.DB_FILE_NAME_KEY, Constants.DB_FILE_NAME_DEFAULT);

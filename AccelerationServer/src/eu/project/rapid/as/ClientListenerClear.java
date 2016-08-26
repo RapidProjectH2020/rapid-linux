@@ -16,12 +16,12 @@ import eu.project.rapid.utils.Configuration;
  * @author sokol
  *
  */
-public class AsClearThread implements Runnable {
+public class ClientListenerClear implements Runnable {
 
-  private static final Logger log = LogManager.getLogger(AsClearThread.class.getSimpleName());
+  private static final Logger log = LogManager.getLogger(ClientListenerClear.class.getSimpleName());
   private Configuration config;
 
-  public AsClearThread(Configuration config) {
+  public ClientListenerClear(Configuration config) {
     this.config = config;
   }
 

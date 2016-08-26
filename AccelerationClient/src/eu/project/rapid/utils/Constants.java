@@ -1,5 +1,7 @@
 package eu.project.rapid.utils;
 
+import java.io.File;
+
 /**
  * Default values to use if no configuration file is provided.<br>
  * This file will be utilized by Java's Properties class, which only deals with String objects. For
@@ -12,6 +14,9 @@ public final class Constants {
 
   /************ COMMON SIDE ************/
   // The config file should be put on the classpath of the project
+  // The number of recent method executions to keep in DB so that they can be used for offloading
+  // decision.
+  public static final int MAX_METHOD_EXEC_HISTORY = 50;
   public static final String CONFIG_PROPERTIES = "config.properties";
   public static final String LOG_FILE_NAME_KEY = "rapid-log";
   public static final String LOG_FILE_NAME_DEFAULT = "rapid-log.csv";
@@ -67,6 +72,11 @@ public final class Constants {
   /*********** SERVER SIDE ************/
   public static final String RAPID_FOLDER_SERVER_KEY = "rapidServerFolder";
   public static final String RAPID_FOLDER_SERVER_DEFAULT = "rapid-server";
+  // Check if the method is offloaded or if it's running on client side.
+  public static final String FILE_OFFLOADED =
+      RAPID_FOLDER_SERVER_DEFAULT + File.separator + "offloaded";
+  public static final String CLONE_ID_FILE =
+      RAPID_FOLDER_SERVER_DEFAULT + File.separator + "cloneId";
   public static final String AS_PORT_KEY = "asPort";
   public static final String AS_PORT_DEFAULT = "4322";
   public static final String AS_PORT_SSL_KEY = "asPortSSL";
@@ -76,11 +86,12 @@ public final class Constants {
   public static final String SLAM_IP_DEFAULT = "127.0.0.1";
   public static final String SLAM_PORT_KEY = "slamPort";
   public static final String SLAM_PORT_DEFAULT = "3456";
-  public static final String SENTINEL_OFFLOADED_FILE = "offloaded";
 
   /*********** CLIENT SIDE ************/
   public static final String RAPID_FOLDER_CLIENT_KEY = "rapidClientFolder";
   public static final String RAPID_FOLDER_CLIENT_DEFAULT = "rapid-client";
+  public static final String FILE_DB_CACHE =
+      RAPID_FOLDER_CLIENT_DEFAULT + File.separator + "dbCache.ser";
   public static final String AC_RM_PORT_KEY = "acRmPort";
   public static final String AC_RM_PORT_DEFAULT = "6543";
   public static final String CONNECT_PREV_VM_KEY = "connectToPrevVm";

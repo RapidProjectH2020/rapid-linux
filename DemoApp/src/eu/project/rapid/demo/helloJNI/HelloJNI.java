@@ -51,13 +51,5 @@ public class HelloJNI extends Remoteable {
   }
 
   @Override
-  public void copyState(Remoteable state) {
-    // TODO Auto-generated method stub
-
-  }
-
-  // public static void main(String[] args) {
-  // new HelloNative().print();
-  // }
-
+  public void copyState(Remoteable state) {}
 }

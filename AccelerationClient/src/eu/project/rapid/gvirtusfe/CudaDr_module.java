@@ -4,8 +4,6 @@ import java.io.IOException;
 
 import javax.xml.bind.DatatypeConverter;
 
-import eu.project.rapid.ac.DFE;
-
 
 /**
  *
@@ -13,28 +11,14 @@ import eu.project.rapid.ac.DFE;
  */
 public class CudaDr_module {
 
-  GVirtusFrontend gvfe;
+  public CudaDr_module() {}
 
-  public CudaDr_module(DFE dfe) {
-    this.gvfe = dfe.getGvirtusFrontend();
-  }
-
-  /**
-   * Sokol: changed this to public from private.
-   * 
-   * @param gvfe
-   * @param res
-   * @param cmodule
-   * @param str
-   * @return
-   * @throws IOException
-   */
-  public String cuModuleGetFunction(Result res, String cmodule, String str) throws IOException {
+  String cuModuleGetFunction(Frontend FE, Result res, String cmodule, String str)
+      throws IOException {
 
     Buffer b = new Buffer();
     str = str + "\0";
     long size = str.length();
-    System.out.println("size str" + str.length());
     byte[] bits = this.longToByteArray(size);
 
     for (int i = 0; i < bits.length; i++) {
@@ -49,7 +33,7 @@ public class CudaDr_module {
 
     b.Add(cmodule);
 
-    gvfe.Execute("cuModuleGetFunction", b, res);
+    FE.Execute("cuModuleGetFunction", b, res);
     String pointer = "";
     pointer = getHex(res, 8);
     for (int i = 0; i < res.getSizebuffer() - 8; i++) {
@@ -60,7 +44,7 @@ public class CudaDr_module {
 
   }
 
-  public String cuModuleLoadDataEx(Result res, String ptxSource, int jitNumOptions,
+  public String cuModuleLoadDataEx(Frontend FE, Result res, String ptxSource, int jitNumOptions,
       int[] jitOptions, long jitOptVals0, char[] jitOptVals1, long jitOptVals2) throws IOException {
     Buffer b = new Buffer();
     b.AddInt(jitNumOptions);
@@ -68,7 +52,6 @@ public class CudaDr_module {
     // addStringForArgument
     ptxSource = ptxSource + "\0";
     long sizePtxSource = ptxSource.length();
-    System.out.println("size " + ptxSource.length());
     long size = sizePtxSource;
     byte[] bits = this.longToByteArray(size);
 
@@ -103,7 +86,7 @@ public class CudaDr_module {
       b.AddByte(bit2[i] & 0xFF);
     }
 
-    gvfe.Execute("cuModuleLoadDataEx", b, res);
+    FE.Execute("cuModuleLoadDataEx", b, res);
     String pointer = "";
     pointer = getHex(res, 8);
     for (int i = 0; i < res.getSizebuffer() - 8; i++)
@@ -121,7 +104,6 @@ public class CudaDr_module {
       array[i] = bit;
     }
     String hex = DatatypeConverter.printHexBinary(array);
-    System.out.println(hex);
     return hex;
   }
 

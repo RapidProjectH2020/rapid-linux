@@ -1,4 +1,4 @@
-package eu.project.rapid.utils;
+package eu.project.rapid.ac.db;
 
 import java.sql.Connection;
 import java.sql.DatabaseMetaData;
@@ -10,6 +10,8 @@ import java.util.List;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+
+import eu.project.rapid.utils.Configuration;
 
 /**
  * Singleton DB class.<br>

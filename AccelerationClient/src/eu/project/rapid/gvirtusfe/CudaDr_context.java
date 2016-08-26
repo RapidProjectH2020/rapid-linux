@@ -8,37 +8,33 @@ import java.io.IOException;
 
 import javax.xml.bind.DatatypeConverter;
 
-import eu.project.rapid.ac.DFE;
-
 /**
  *
  * @author cferraro
  */
 public class CudaDr_context {
 
-  GVirtusFrontend gvfe;
+  public CudaDr_context() {}
 
-  public CudaDr_context(DFE dfe) {
-    this.gvfe = dfe.getGvirtusFrontend();
-  }
-
-  public String cuCtxCreate(Result res, int flags, int dev) throws IOException {
+  public String cuCtxCreate(Frontend fe, Result res, int flags, int dev) throws IOException {
 
     Buffer b = new Buffer();
     b.AddInt(flags);
     b.AddInt(dev);
     String outbuffer = "";
-    gvfe.Execute("cuCtxCreate", b, res);
+    fe.Execute("cuCtxCreate", b, res);
     return getHex(res, 8);
   }
 
-  public int cuCtxDestroy(Result res, String ctx) throws IOException {
+  public int cuCtxDestroy(Frontend fe, Result res, String ctx) throws IOException {
 
     Buffer b = new Buffer();
     b.Add(ctx);
-    gvfe.Execute("cuCtxDestroy", b, res);
+    fe.Execute("cuCtxDestroy", b, res);
     return 0;
   }
+
+
 
   private String getHex(Result res, int size) throws IOException {
 
@@ -48,7 +44,6 @@ public class CudaDr_context {
       array[i] = bit;
     }
     String hex = DatatypeConverter.printHexBinary(array);
-    System.out.println(hex);
     return hex;
   }
 

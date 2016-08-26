@@ -8,31 +8,27 @@ import java.io.IOException;
 
 import javax.xml.bind.DatatypeConverter;
 
-import eu.project.rapid.ac.DFE;
-
 /**
  *
  * @author cferraro
  */
 public class CudaRt_memory {
 
-  private GVirtusFrontend gvfe;
+  public CudaRt_memory() {}
 
-  public CudaRt_memory(DFE dfe) {
-    this.gvfe = dfe.getGvirtusFrontend();
-  }
 
-  public String cudaMalloc(Result res, long size) throws IOException {
+
+  public String cudaMalloc(Frontend fe, Result res, long size) throws IOException {
 
     Buffer b = new Buffer();
     b.Add((int) size);
     String pointer = "";
-    gvfe.Execute("cudaMalloc", b, res);
+    fe.Execute("cudaMalloc", b, res);
     pointer = getHex(res, 8);
     return pointer;
   }
 
-  public void cudaMemcpy(Result res, String dst, float[] src, int count, int kind)
+  public void cudaMemcpy(Frontend fe, Result res, String dst, float[] src, int count, int kind)
       throws IOException {
 
     Buffer b = new Buffer();
@@ -41,8 +37,11 @@ public class CudaRt_memory {
     b.Add(src);
     b.Add(count * 4);
     b.AddInt(kind);
-    gvfe.Execute("cudaMemcpy", b, res);
+    fe.Execute("cudaMemcpy", b, res);
+
+
   }
+
 
   private String getHex(Result res, int size) throws IOException {
 
@@ -52,7 +51,6 @@ public class CudaRt_memory {
       array[i] = bit;
     }
     String hex = DatatypeConverter.printHexBinary(array);
-    System.out.println(hex);
     return hex;
   }
 }
