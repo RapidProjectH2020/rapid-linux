@@ -298,15 +298,13 @@ public class AppHandler {
       // }
       // }
 
-      objToExecute = null;
-
       // If this is the main VM send back also the object to execute,
       // otherwise the helper VMs don't need to send it back.
       if (vmHelperId == 0) {
         // If we choose to also send back the object then the number of bytes will increase.
         // If necessary just uncomment the line below.
-        // return new ResultContainer(objToExecute, result, execDuration);
-        return new ResultContainer(null, result, getObjectDuration, execDuration);
+        return new ResultContainer(objToExecute, result, getObjectDuration, execDuration);
+        // return new ResultContainer(null, result, getObjectDuration, execDuration);
       } else {
         return new ResultContainer(null, result, getObjectDuration, execDuration);
       }
