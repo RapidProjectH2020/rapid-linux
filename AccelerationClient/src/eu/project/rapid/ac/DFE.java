@@ -304,8 +304,14 @@ public class DFE {
         } catch (ClassNotFoundException e) {
           log.error("Could not properly receive the VM info from the AC_RM: " + e);
         }
-
         log.info("------ Finished talking to AC_RM, received userID=" + userID + " and VM=" + vm);
+
+        // FIXME: Remove the following two lines and use the VM received from the AC_RM.
+        // Figure out why AC_RM returns VM with IP 127.0.0.1
+        vm = new Clone("FIXME", "10.0.0.3");
+        log.info("------ FIXME: temporarely using this VM while trying to solve the AC_RM problem: "
+            + vm);
+
         connectionAcRmSuccess = true;
       } catch (IOException e) {
         log.warn("AC_RM is not started yet, retrying after 2 seconds");
