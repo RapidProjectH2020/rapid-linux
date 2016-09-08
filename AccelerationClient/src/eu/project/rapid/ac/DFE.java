@@ -75,15 +75,22 @@ public class DFE {
   private Method prepareDataMethod = null;
   private long prepareDataDuration = -1;
 
+  private static volatile DFE instance = null;
+
   // Constructor to be used by the AS
-  public DFE(boolean serverSide) {}
+  private DFE(boolean serverSide) {}
 
   // Constructor to be used by the application.
-  public DFE() {
+  private DFE() {
+    // To prevent instantiating the DFE calling this constructor by Reflection call
+    if (instance != null) {
+      throw new IllegalStateException("Already initialized.");
+    }
+
     config = new Configuration(DFE.class.getSimpleName(), REGIME.AC);
     dse = new DSE(config);
 
-    // Create the folder where the client apps wills keep their data.
+    // Create the folder where the client apps will keep their data.
     try {
       Utils.createDirIfNotExist(config.getRapidFolder());
     } catch (FileNotFoundException e) {
@@ -164,6 +171,28 @@ public class DFE {
         gVirtusFrontend = new Frontend(config.getGvirtusIp(), config.getGvirtusPort());
       }
     }
+  }
+
+  /**
+   * Double check locking singleton implementation.
+   * 
+   * @return
+   */
+  public static DFE getInstance() {
+    // local variable increases performance by 25 percent according to
+    // Joshua Bloch "Effective Java, Second Edition", p. 283-284
+    DFE result = instance;
+
+    if (result == null) {
+      synchronized (DFE.class) {
+        result = instance;
+        if (result == null) {
+          instance = result = new DFE();
+        }
+      }
+    }
+
+    return result;
   }
 
   private boolean connectWitAs() {
