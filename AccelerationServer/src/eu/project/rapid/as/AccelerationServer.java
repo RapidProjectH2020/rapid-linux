@@ -33,7 +33,7 @@ public class AccelerationServer {
   private int userId = -1;
 
   public AccelerationServer() {
-    log.info("Starting the AS");
+    log.info("Starting the AS 8/9/2016");
     config = new Configuration(AccelerationServer.class.getSimpleName(), REGIME.AS);
 
     if (config.getSlamIp() == null) {
