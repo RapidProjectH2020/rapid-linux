@@ -33,7 +33,7 @@ public class AccelerationServer {
   private int userId = -1;
 
   public AccelerationServer() {
-    log.info("Starting the AS 8/9/2016");
+    log.info("Starting the AS 9/14/2016 12:14");
     config = new Configuration(AccelerationServer.class.getSimpleName(), REGIME.AS);
 
     if (config.getSlamIp() == null) {
@@ -73,26 +73,26 @@ public class AccelerationServer {
   }
 
   /**
-   * 1. Register to the SLAM.<br>
-   * 2. If the registration with the SLAM was OK, register with the DSE, otherwise quit.<br>
+   * 1. Register to the VMM.<br>
+   * 2. If the registration with the VMM was OK, register with the DSE, otherwise quit.<br>
    * 
    * @return
    */
   private void register() {
-    if (!registerToSlam()) {
+    if (!registerToVMM()) {
       quit("Error while registering.");
     } else {
       log.info("Correctly registered.");
     }
   }
 
-  private boolean registerToSlam() {
+  private boolean registerToVMM() {
 
-    try (Socket slamSocket = new Socket(config.getSlamIp(), config.getSlamPort());
-        ObjectOutputStream oos = new ObjectOutputStream(slamSocket.getOutputStream());
-        ObjectInputStream ois = new ObjectInputStream(slamSocket.getInputStream())) {
+    try (Socket vmmSocket = new Socket(config.getSlamIp(), config.getSlamPort());
+        ObjectOutputStream oos = new ObjectOutputStream(vmmSocket.getOutputStream());
+        ObjectInputStream ois = new ObjectInputStream(vmmSocket.getInputStream())) {
 
-      oos.writeByte(RapidMessages.AS_RM_REGISTER_SLAM);
+      oos.writeByte(RapidMessages.AS_RM_REGISTER_VMM);
       oos.flush();
       userId = ois.readInt();
 
@@ -106,7 +106,7 @@ public class AccelerationServer {
       }
       oos.flush();
     } catch (IOException e) {
-      log.error("Error while connecting to SLAM: " + e);
+      log.error("Error while connecting to VMM: " + e);
     }
 
     return false;

@@ -70,6 +70,7 @@ public class NetworkProfilerServer implements Runnable {
 
         while (request != -1) {
           request = is.read();
+          log.info("Client asking for network monitoring: " + request);
 
           switch (request) {
 
@@ -118,6 +119,10 @@ public class NetworkProfilerServer implements Runnable {
                 os.write(buffer);
                 is.read();
               }
+
+            default:
+              log.error("Command not recognized: " + request);
+              break;
           }
         }
 
@@ -126,8 +131,9 @@ public class NetworkProfilerServer implements Runnable {
       } finally {
         log.info("Client finished bandwidth measurement: " + request);
 
-        if (request == RapidMessages.UPLOAD_FILE)
+        if (request == RapidMessages.UPLOAD_FILE) {
           totalTimeBytesRead = System.nanoTime() - totalTimeBytesRead;
+        }
       }
     }
   }

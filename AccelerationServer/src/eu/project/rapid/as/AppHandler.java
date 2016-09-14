@@ -3,6 +3,7 @@ package eu.project.rapid.as;
 import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
+import java.io.FilenameFilter;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.ObjectOutputStream;
@@ -13,7 +14,9 @@ import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.net.Socket;
 import java.util.Enumeration;
+import java.util.HashSet;
 import java.util.LinkedList;
+import java.util.Set;
 import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
 
@@ -25,6 +28,7 @@ import eu.project.rapid.ac.ResultContainer;
 import eu.project.rapid.common.RapidMessages;
 import eu.project.rapid.common.RapidUtils;
 import eu.project.rapid.utils.Configuration;
+import eu.project.rapid.utils.SharedLibDependencyGraph;
 import eu.project.rapid.utils.Utils;
 
 public class AppHandler {
@@ -52,14 +56,24 @@ public class AppHandler {
   private Object[] pValues; // the values of the parameters to be passed to the method
   private Class<?> returnType; // the return type of the method
   private String appFolderPath; // the path where the files for this app are stored
+  private File libFolder;
   private String jarFilePath; // the path where the jar file is stored
   private int vmHelperId = 0;
 
+  private final int BUFFER = 8192;
+  private LinkedList<File> libraries;
+  private LinkedList<File> librariesSorted; // Sorted in dependency order
+  private Set<String> libNames;
+  private SharedLibDependencyGraph dependencies;
 
   public AppHandler(Socket socket, Configuration config) {
 
     this.clientSocket = socket;
     this.config = config;
+    libraries = new LinkedList<>();
+    librariesSorted = new LinkedList<>();
+    libNames = new HashSet<>();
+    dependencies = new SharedLibDependencyGraph();
 
     try {
       is = clientSocket.getInputStream();
@@ -80,6 +94,7 @@ public class AppHandler {
             log.info("Client requesting REGISTER");
             jarName = dOis.readUTF();
             jarLength = dOis.readLong();
+
             appFolderPath = this.config.getRapidFolder() + File.separator + jarName;
             jarFilePath = appFolderPath + File.separator + jarName + ".jar";
             if (!appExists()) {
@@ -91,6 +106,10 @@ public class AppHandler {
               os.write(RapidMessages.AS_APP_PRESENT_AC);
             }
             dOis.setJar(appFolderPath, jarFilePath);
+
+            addLibraries();
+            calculateLibDependencies();
+
             break;
 
           case RapidMessages.AC_OFFLOAD_REQ_AS:
@@ -111,6 +130,114 @@ public class AppHandler {
       RapidUtils.closeQuietly(dOis);
       RapidUtils.closeQuietly(clientSocket);
     }
+  }
+
+  /**
+   * Extract native libraries for the x86 platform included in the .jar file (which is actually a
+   * zip file).
+   * 
+   * The x86 shared libraries are: libs/library.so inside the jar file. They are extracted from the
+   * jar and saved in appFolderPath/libs. Initially we used to save them with the same name as the
+   * original (library.so) but this caused many problems related to classloaders. When an app was
+   * offloaded for the first time and used the library, the library was loaded in the jvm. If the
+   * client disconnected, the classloader that loaded the library was not unloaded, which means that
+   * also the library was not unloaded from the jvm. On consequent offloads of the same app, the
+   * classloader is different, meaning that the library could not be loaded anymore due to the fact
+   * that was already loaded by another classloader. But it could not even be used, due to the fact
+   * that the classloaders differ.<br>
+   * <br>
+   * To solve this problem we save the library within a new folder, increasing a sequence number
+   * each time the same app is offloaded. So, the library.so file will be saved as
+   * library-1/library.so, library-2/library.so, and so on.
+   * 
+   * @param dexFile the apk file
+   * @return the list of shared libraries
+   */
+
+  @SuppressWarnings("unchecked")
+  private void addLibraries() {
+    Long startTime = System.nanoTime();
+
+    FilenameFilter libsFilter = new FilenameFilter() {
+      public boolean accept(File dir, String name) {
+        String lowercaseName = name.toLowerCase();
+        if (lowercaseName.startsWith("libs")) {
+          return true;
+        } else {
+          return false;
+        }
+      }
+    };
+
+    // Folder where the libraries are extracted
+    File[] libsFolders = new File(appFolderPath).listFiles(libsFilter);
+    if (libsFolders.length > 1) {
+      log.warn("More than on libs folder is present, not clear how proceed now: ");
+      for (File f : libsFolders) {
+        log.info("\t" + f.getAbsolutePath());
+      }
+    } else if (libsFolders.length == 1) {
+      libFolder = libsFolders[0];
+      log.info("Found exactly one libs folder: " + libFolder.getAbsolutePath());
+      if (libFolder.exists() && libFolder.isDirectory()) {
+        int currVersion = 1;
+        if (!libFolder.getName().equals("libs")) {
+          currVersion = Integer.parseInt(libFolder.getName().substring("libs-".length())) + 1;
+        }
+        libFolder
+            .renameTo(new File(libFolder.getParent() + File.separator + "libs-" + currVersion));
+        libFolder = new File(libFolder.getParent() + File.separator + "libs-" + currVersion);
+
+        log.info("Renaming folder to: " + libFolder.getParent() + File.separator + "libs-"
+            + currVersion);
+
+        for (File f : libFolder.listFiles()) {
+          if (Utils.isLinux() && f.getName().contains(".so")
+              || (Utils.isMac() && f.getName().contains(".jnilib"))) {
+            // Store the library to the list
+            libraries.add(f);
+            libNames.add(f.getName());
+          }
+        }
+      }
+    } else {
+      log.info("No libs* folder present, no shared libraries to load.");
+    }
+
+    log.info(
+        "Duration of creating libraries: " + ((System.nanoTime() - startTime) / 1000000) + "ms");
+  }
+
+  private void calculateLibDependencies() {
+    for (File currLibFile : libraries) {
+      String result = RapidUtils
+          .executeCommand("objdump -x " + currLibFile.getAbsolutePath() + " | grep NEEDED");
+
+      // System.out.println(result);
+      String[] splitResult = result.split("\\s+");
+
+      System.out.println("Dependencies of library: " + currLibFile.getName());
+      dependencies.addLibrary(currLibFile.getName());
+      for (String tempLib : splitResult) {
+        if (tempLib.contains(".so")) {
+          if (libNames.contains(tempLib)) {
+            dependencies.addDependency(currLibFile.getName(), tempLib);
+            System.out.println(tempLib);
+          }
+        }
+      }
+    }
+
+    // Insert the libraries in a sorted list where the non dependent ones are put first.
+    log.info("List of libraries sorted based on their dependencies:");
+    for (int i = 0; i < libNames.size(); i++) {
+      String temp = dependencies.getOneNonDependentLib();
+      if (temp != null) {
+        log.info(temp);
+        librariesSorted.add(new File(libFolder + File.separator + temp));
+      }
+    }
+
   }
 
   /**
@@ -160,9 +287,11 @@ public class AppHandler {
       asDFE.setAccessible(true);
 
       Class<?> dfeType = asDFE.getType();
-      Constructor<?> cons = dfeType.getConstructor(boolean.class);
+      Constructor<?> cons = dfeType.getDeclaredConstructor(boolean.class);
+      // Constructor<?> cons = dfeType.getConstructor(boolean.class);
       Object dfe = null;
       try {
+        cons.setAccessible(true);
         dfe = cons.newInstance(true);
       } catch (InstantiationException e) {
         // too bad. still try to carry on.
@@ -231,6 +360,21 @@ public class AppHandler {
       Long execDuration = null;
       Long startExecTime = System.nanoTime();
       try {
+        // long s = System.nanoTime();
+        Method prepareDataMethod = objToExecute.getClass().getDeclaredMethod("prepareDataOnServer");
+        prepareDataMethod.setAccessible(true);
+        // RapidUtils.sendAnimationMsg(config, RapidMessages.AC_PREPARE_DATA);
+        long s = System.nanoTime();
+        prepareDataMethod.invoke(objToExecute);
+        long prepareDataDuration = System.nanoTime() - s;
+        log.warn(
+            "Executed method prepareDataOnServer() on " + (prepareDataDuration / 1000000) + " ms");
+
+      } catch (NoSuchMethodException e) {
+        log.warn("The method prepareDataOnServer() does not exist");
+      }
+
+      try {
         result = runMethod.invoke(objToExecute, pValues);
       } catch (InvocationTargetException e) {
         // The method might have failed if the required shared library
@@ -238,11 +382,11 @@ public class AppHandler {
         // restarting the method
         if (e.getTargetException() instanceof UnsatisfiedLinkError
             || e.getTargetException() instanceof ExceptionInInitializerError) {
-          log.error("UnsatisfiedLinkError thrown, loading libs and retrying");
+          log.error("UnsatisfiedLinkError thrown, loading libs from" + libFolder + " and retrying");
 
           Method libLoader = objClass.getMethod("loadLibraries", LinkedList.class);
           try {
-            // libLoader.invoke(objToExecute, libraries);
+            libLoader.invoke(objToExecute, librariesSorted);
             result = runMethod.invoke(objToExecute, pValues);
           } catch (InvocationTargetException e1) {
             log.error("InvocationTargetException after loading the libraries");
