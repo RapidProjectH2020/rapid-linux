@@ -238,7 +238,6 @@ public class NetworkProfiler {
       while (true) {
         rxBytes += is.read(buffer);
         os.write(1);
-        log.error("Total bytes read until now: " + rxBytes);
       }
     } catch (UnknownHostException e) {
       log.error("Error while measuring dlRate: " + e);
