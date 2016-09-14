@@ -28,15 +28,20 @@ public class NetworkProfiler {
   public static final int rttInfinite = Constants.GIGA;
   private static final int rttTimes = 5;
 
+  public static String networkType = "WiFi";
   private static final int BUFFER_SIZE = 10 * 1024;
   private static byte[] buffer = new byte[BUFFER_SIZE];
   private static final int bwWindowMaxLength = 20;
   private static List<Integer> ulRateHistory = new LinkedList<>();
   private static List<Integer> dlRateHistory = new LinkedList<>();
-  public static int rtt = rttInfinite;
-  public static int lastUlRate = -1;
-  public static int lastDlRate = -1;
-  public static String networkType = "WiFi";
+  // public static int rtt = rttInfinite;
+  // public static int lastUlRate = -1;
+  // public static int lastDlRate = -1;
+
+  // FIXME Remove these values and perform network measurement.
+  public static int rtt = 100;
+  public static int lastUlRate = 900 * 1000;
+  public static int lastDlRate = 900 * 1000;
 
   private static ScheduledExecutorService scheduler;
   private static ScheduledFuture<?> rttHandler;
