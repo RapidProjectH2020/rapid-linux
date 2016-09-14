@@ -140,10 +140,7 @@ public class DFE {
           // config.setGvirtusIp(TODO: ip address of the physical machine where the VM is running);
         }
 
-        // NetworkProfiler.startNetworkMonitoring(config);
-        NetworkProfiler.measureRtt();
-        NetworkProfiler.measureDlRate();
-        NetworkProfiler.measureUlRate();
+        NetworkProfiler.startNetworkMonitoring(config);
 
         // Start waiting for the network profiling to be finished.
         // Wait maximum for 10 seconds and then give up, since something could have gone wrong.
@@ -151,13 +148,13 @@ public class DFE {
         while (NetworkProfiler.rtt == NetworkProfiler.rttInfinite
             || NetworkProfiler.lastUlRate == -1 || NetworkProfiler.lastDlRate == -1) {
 
-          if ((System.currentTimeMillis() - startWaiting) > 10 * 1000) {
+          if ((System.currentTimeMillis() - startWaiting) > 30 * 1000) {
             log.warn("Too much time for the network profiling to finish, postponing for later.");
             break;
           }
 
           try {
-            Thread.sleep(500);
+            Thread.sleep(1000);
             log.debug("Waiting for network profiling to finish...");
           } catch (InterruptedException e) {
           }

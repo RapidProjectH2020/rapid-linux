@@ -34,14 +34,9 @@ public class NetworkProfiler {
   private static final int bwWindowMaxLength = 20;
   private static List<Integer> ulRateHistory = new LinkedList<>();
   private static List<Integer> dlRateHistory = new LinkedList<>();
-  // public static int rtt = rttInfinite;
-  // public static int lastUlRate = -1;
-  // public static int lastDlRate = -1;
-
-  // FIXME Remove these values and perform network measurement.
-  public static int rtt = 100;
-  public static int lastUlRate = 900 * 1000;
-  public static int lastDlRate = 900 * 1000;
+  public static int rtt = rttInfinite;
+  public static int lastUlRate = -1;
+  public static int lastDlRate = -1;
 
   private static ScheduledExecutorService scheduler;
   private static ScheduledFuture<?> rttHandler;
@@ -126,11 +121,11 @@ public class NetworkProfiler {
       vmIp = config.getVm().getIp();
       vmPortBandwidthTest = config.getVm().getClonePortBandwidthTest();
       scheduler = Executors.newScheduledThreadPool(3);
-      rttHandler = scheduler.scheduleAtFixedRate(new RttMeasurer(), 0, 13, TimeUnit.MINUTES);
+      rttHandler = scheduler.scheduleAtFixedRate(new RttMeasurer(), 0, 13 * 60, TimeUnit.SECONDS);
       downloadHandler =
-          scheduler.scheduleAtFixedRate(new DownloadRateMeasurer(), 0, 29, TimeUnit.MINUTES);
+          scheduler.scheduleAtFixedRate(new DownloadRateMeasurer(), 5, 29 * 60, TimeUnit.SECONDS);
       uploadHandler =
-          scheduler.scheduleAtFixedRate(new UploadRateMeasurer(), 0, 31, TimeUnit.MINUTES);
+          scheduler.scheduleAtFixedRate(new UploadRateMeasurer(), 10, 31 * 60, TimeUnit.SECONDS);
     }
   }
 
@@ -243,6 +238,7 @@ public class NetworkProfiler {
       while (true) {
         rxBytes += is.read(buffer);
         os.write(1);
+        log.error("Total bytes read until now: " + rxBytes);
       }
     } catch (UnknownHostException e) {
       log.error("Error while measuring dlRate: " + e);
