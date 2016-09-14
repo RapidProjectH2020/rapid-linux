@@ -162,7 +162,7 @@ public class NetworkProfiler {
     }
   }
 
-  private static void measureRtt() {
+  public static void measureRtt() {
     log.info("Sending ping messages to measure the RTT with the server");
 
     int tempRtt = 0;
@@ -201,7 +201,7 @@ public class NetworkProfiler {
    * After the 3 second timeout, close the sockets to cause an Exception and force the InputStream
    * to stop listening. Use the measured values to estimate the download bandwidth.
    */
-  private static void measureDlRate() {
+  public static void measureDlRate() {
 
     long time = 0;
     long rxBytes = 0;
@@ -251,7 +251,7 @@ public class NetworkProfiler {
     }
   }
 
-  private static void measureUlRate() {
+  public static void measureUlRate() {
 
     long txTime = 0;
     long txBytes = 0;

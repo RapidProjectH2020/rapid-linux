@@ -140,7 +140,10 @@ public class DFE {
           // config.setGvirtusIp(TODO: ip address of the physical machine where the VM is running);
         }
 
-        NetworkProfiler.startNetworkMonitoring(config);
+        // NetworkProfiler.startNetworkMonitoring(config);
+        NetworkProfiler.measureRtt();
+        NetworkProfiler.measureDlRate();
+        NetworkProfiler.measureUlRate();
 
         // Start waiting for the network profiling to be finished.
         // Wait maximum for 10 seconds and then give up, since something could have gone wrong.
