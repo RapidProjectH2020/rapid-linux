@@ -33,9 +33,6 @@ public class NQueens extends Remoteable {
   private int nrClones;
   private transient DFE dfe;
 
-  private double localDataFraction = 0;
-
-
   /**
    * @param dfe The execution dfe taking care of the execution
    * @param nrClones In case of remote execution specify the number of clones needed
@@ -53,10 +50,7 @@ public class NQueens extends Remoteable {
   }
 
   @Override
-  public void prepareData(double localDataFraction) {
-    log.info("Preparing the data using localDataFraction: " + localDataFraction);
-    this.localDataFraction = localDataFraction;
-  }
+  public void prepareDataOnClient() {}
 
   /**
    * Solve the N-queens problem
@@ -94,16 +88,15 @@ public class NQueens extends Remoteable {
     byte[][] board = new byte[N][N];
     int countSolutions = 0;
 
-    int lastColumnOnPhone = (int) (N * localDataFraction);
-    int start = 0, end = lastColumnOnPhone;
+    int start = 0, end = N;
 
     if (Utils.isOffloaded()) {
       // cloneId == 0 if this is the main clone
       // or [1, nrClones-1] otherwise
       int cloneId = Utils.readCloneHelperId();
-      int howManyCols = (int) ((N - lastColumnOnPhone) / nrClones); // Integer division, we may
-                                                                    // loose some columns.
-      start = lastColumnOnPhone + cloneId * howManyCols; // cloneId == 0 if this is the main clone
+      int howManyCols = (int) (N / nrClones); // Integer division, we may
+                                              // loose some columns.
+      start = cloneId * howManyCols; // cloneId == 0 if this is the main clone
       end = start + howManyCols;
 
       // If this is the clone with the highest id let him take care

@@ -4,7 +4,6 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 import eu.project.rapid.ac.DFE;
-import eu.project.rapid.demo.helloJNI.HelloJNI;
 
 public class DemoApp {
   private DFE dfe;
@@ -13,7 +12,7 @@ public class DemoApp {
   private final static Logger log = LogManager.getLogger(DemoApp.class.getSimpleName());
 
   public DemoApp() {
-    dfe = new DFE();
+    dfe = DFE.getInstance();
 
     // log.info("Testing JNI...");
     // testHelloJni();

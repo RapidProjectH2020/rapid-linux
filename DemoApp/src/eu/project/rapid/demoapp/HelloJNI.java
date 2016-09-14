@@ -1,4 +1,4 @@
-package eu.project.rapid.demo.helloJNI;
+package eu.project.rapid.demoapp;
 
 import java.lang.reflect.Method;
 
@@ -12,13 +12,17 @@ public class HelloJNI extends Remoteable {
   private transient DFE dfe;
 
   static {
-    if (Utils.isMac()) {
-      System.load("/Users/sokol/rapid-client/demo/HelloJNI.jnilib");
-    } else if (Utils.isLinux()) {
-      System.load("/home/gjigandi/rapid-client/libhellojni.so");
-      // System.err.println("Sokol: library not compiled for Linux.");
-    } else if (Utils.isWindows()) {
-      System.err.println("Sokol: library not compiled for Windows.");
+    try {
+      if (Utils.isMac()) {
+        System.load("/Users/sokol/rapid-client/demo/HelloJNI.jnilib");
+      } else if (Utils.isLinux()) {
+        System.load("/home/gjigandi/rapid-client/libhellojni.so");
+        // System.err.println("Sokol: library not compiled for Linux.");
+      } else if (Utils.isWindows()) {
+        System.err.println("Sokol: library not compiled for Windows.");
+      }
+    } catch (UnsatisfiedLinkError e) {
+      // log.info("Could not load native library, maybe this is running on the clone.");
     }
   }
 
