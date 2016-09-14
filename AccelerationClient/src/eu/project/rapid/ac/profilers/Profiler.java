@@ -27,6 +27,10 @@ public class Profiler {
     }
   }
 
+  public void stop(long pureExecDur) {
+    stop(0, pureExecDur);
+  }
+
   public void stop(long prepareDataDur, long pureExecDur) {
     progProfiler.setPrepareDataDur(prepareDataDur);
     progProfiler.setPureExecDur(pureExecDur);

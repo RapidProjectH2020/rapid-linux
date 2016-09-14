@@ -69,9 +69,6 @@ public class DFE {
   private ObjectOutputStream vmOos;
   private ObjectInputStream vmOis;
 
-  // If the developer has implemented the prepareData method then we measure how much it takes to
-  // prepare the data.
-  private double localDataFraction = 1;
   private Method prepareDataMethod = null;
   private long prepareDataDuration = -1;
 
@@ -421,15 +418,6 @@ public class DFE {
     // First find where to execute the method.
     ExecLocation execLocation = dse.findExecLocationDbCache(jarName, m.getName());
 
-    try {
-      // long s = System.nanoTime();
-      prepareDataMethod = o.getClass().getDeclaredMethod("prepareData", double.class);
-      prepareDataMethod.setAccessible(true);
-    } catch (NoSuchMethodException e) {
-      log.warn("The method prepareData() does not exist");
-      prepareDataMethod = null;
-    }
-
     if (execLocation == ExecLocation.LOCAL) {
       try {
         result = executeLocally(m, values, o);
@@ -470,14 +458,6 @@ public class DFE {
   private Object executeLocally(Method m, Object[] pValues, Object o)
       throws IllegalArgumentException, IllegalAccessException, InvocationTargetException {
 
-    localDataFraction = 1;
-    if (prepareDataMethod != null) {
-      // RapidUtils.sendAnimationMsg(config, RapidMessages.AC_PREPARE_DATA);
-      long s = System.nanoTime();
-      prepareDataMethod.invoke(o, localDataFraction);
-      prepareDataDuration = System.nanoTime() - s;
-    }
-
     // Start tracking execution statistics for the method
     Profiler profiler = new Profiler(jarName, m.getName(), ExecLocation.LOCAL, config);
     profiler.start();
@@ -492,7 +472,7 @@ public class DFE {
         + pureLocalDuration / Constants.MEGA + "ms");
 
     // Collect execution statistics
-    profiler.stop(prepareDataDuration, pureLocalDuration);
+    profiler.stop(pureLocalDuration);
 
     return result;
   }
@@ -516,12 +496,17 @@ public class DFE {
       SecurityException, ClassNotFoundException, NoSuchMethodException {
     Object result = null;
 
-    localDataFraction = 0;
-    if (prepareDataMethod != null) {
+    try {
+      // long s = System.nanoTime();
+      prepareDataMethod = o.getClass().getDeclaredMethod("prepareDataOnClient");
+      prepareDataMethod.setAccessible(true);
       // RapidUtils.sendAnimationMsg(config, RapidMessages.AC_PREPARE_DATA);
       long s = System.nanoTime();
-      prepareDataMethod.invoke(o, localDataFraction);
+      prepareDataMethod.invoke(o);
       prepareDataDuration = System.nanoTime() - s;
+
+    } catch (NoSuchMethodException e) {
+      log.warn("The method prepareDataOnClient() does not exist");
     }
 
     // Start tracking execution statistics for the method
