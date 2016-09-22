@@ -13,9 +13,13 @@ import java.lang.reflect.Constructor;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.net.Socket;
+import java.nio.file.Files;
+import java.nio.file.StandardCopyOption;
 import java.util.Enumeration;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedList;
+import java.util.Map;
 import java.util.Set;
 import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
@@ -56,7 +60,7 @@ public class AppHandler {
   private Object[] pValues; // the values of the parameters to be passed to the method
   private Class<?> returnType; // the return type of the method
   private String appFolderPath; // the path where the files for this app are stored
-  private File libFolder;
+  private File appLibFolder;
   private String jarFilePath; // the path where the jar file is stored
   private int vmHelperId = 0;
 
@@ -65,6 +69,9 @@ public class AppHandler {
   private LinkedList<File> librariesSorted; // Sorted in dependency order
   private Set<String> libNames;
   private SharedLibDependencyGraph dependencies;
+
+  private static Map<String, RapidClassLoader> classLoaders;
+  private RapidClassLoader rapidClassLoader;
 
   public AppHandler(Socket socket, Configuration config) {
 
@@ -75,6 +82,15 @@ public class AppHandler {
     libNames = new HashSet<>();
     dependencies = new SharedLibDependencyGraph();
 
+    if (classLoaders == null) {
+      classLoaders = new HashMap<>();
+    }
+
+    startListening();
+
+  }
+
+  private void startListening() {
     try {
       is = clientSocket.getInputStream();
       os = clientSocket.getOutputStream();
@@ -105,7 +121,16 @@ public class AppHandler {
               log.info("Jar file already present");
               os.write(RapidMessages.AS_APP_PRESENT_AC);
             }
-            dOis.setJar(appFolderPath, jarFilePath);
+
+            rapidClassLoader = classLoaders.get(jarName);
+            if (rapidClassLoader == null) {
+              rapidClassLoader = new RapidClassLoader(appFolderPath);
+            } else {
+              rapidClassLoader.setAppFolder(appFolderPath);
+            }
+            classLoaders.put(jarName, rapidClassLoader);
+            // dOis.setAppFolder(appFolderPath);
+            dOis.setClassLoader(rapidClassLoader);
 
             addLibraries();
             calculateLibDependencies();
@@ -150,7 +175,6 @@ public class AppHandler {
    * each time the same app is offloaded. So, the library.so file will be saved as
    * library-1/library.so, library-2/library.so, and so on.
    * 
-   * @param dexFile the apk file
    * @return the list of shared libraries
    */
 
@@ -177,26 +201,36 @@ public class AppHandler {
         log.info("\t" + f.getAbsolutePath());
       }
     } else if (libsFolders.length == 1) {
-      libFolder = libsFolders[0];
-      log.info("Found exactly one libs folder: " + libFolder.getAbsolutePath());
-      if (libFolder.exists() && libFolder.isDirectory()) {
+      appLibFolder = libsFolders[0];
+      log.info("Found exactly one libs folder: " + appLibFolder.getAbsolutePath());
+      if (appLibFolder.exists() && appLibFolder.isDirectory()) {
         int currVersion = 1;
-        if (!libFolder.getName().equals("libs")) {
-          currVersion = Integer.parseInt(libFolder.getName().substring("libs-".length())) + 1;
+        if (!appLibFolder.getName().equals("libs")) {
+          currVersion = Integer.parseInt(appLibFolder.getName().substring("libs-".length())) + 1;
         }
-        libFolder
-            .renameTo(new File(libFolder.getParent() + File.separator + "libs-" + currVersion));
-        libFolder = new File(libFolder.getParent() + File.separator + "libs-" + currVersion);
+        appLibFolder
+            .renameTo(new File(appLibFolder.getParent() + File.separator + "libs-" + currVersion));
+        appLibFolder = new File(appLibFolder.getParent() + File.separator + "libs-" + currVersion);
 
-        log.info("Renaming folder to: " + libFolder.getParent() + File.separator + "libs-"
+        log.info("Renaming folder to: " + appLibFolder.getParent() + File.separator + "libs-"
             + currVersion);
 
-        for (File f : libFolder.listFiles()) {
+        for (File f : appLibFolder.listFiles()) {
           if (Utils.isLinux() && f.getName().contains(".so")
               || (Utils.isMac() && f.getName().contains(".jnilib"))) {
             // Store the library to the list
             libraries.add(f);
             libNames.add(f.getName());
+
+            // Copy the file on the rapid system lib folder
+            File newLibFile = new File(
+                config.getRapidFolder() + File.separator + "libs" + File.separator + f.getName());
+            log.info("Copying file " + f + " to " + newLibFile + "...");
+            try {
+              Files.copy(f.toPath(), newLibFile.toPath(), StandardCopyOption.REPLACE_EXISTING);
+            } catch (IOException e) {
+              log.error("Error while copying file " + f + " to " + newLibFile + ": " + e);
+            }
           }
         }
       }
@@ -234,7 +268,7 @@ public class AppHandler {
       String temp = dependencies.getOneNonDependentLib();
       if (temp != null) {
         log.info(temp);
-        librariesSorted.add(new File(libFolder + File.separator + temp));
+        librariesSorted.add(new File(appLibFolder + File.separator + temp));
       }
     }
 
@@ -375,18 +409,31 @@ public class AppHandler {
       }
 
       try {
+        log.info("1. List of already loaded libraries: ");
+        listAllLoadedNativeLibrariesFromJVM();
         result = runMethod.invoke(objToExecute, pValues);
       } catch (InvocationTargetException e) {
+        e.printStackTrace();
         // The method might have failed if the required shared library
         // had not been loaded before, try loading the jar's libraries and
         // restarting the method
         if (e.getTargetException() instanceof UnsatisfiedLinkError
             || e.getTargetException() instanceof ExceptionInInitializerError) {
-          log.error("UnsatisfiedLinkError thrown, loading libs from" + libFolder + " and retrying");
+          log.error(
+              "UnsatisfiedLinkError thrown, loading libs from" + appLibFolder + " and retrying");
+
+          log.info("Current classloader: " + AppHandler.class.getClassLoader());
+          log.info("System classloader: " + ClassLoader.getSystemClassLoader());
+          log.info("Object classloader: " + objToExecute.getClass().getClassLoader());
+          log.info("dOis classloader: " + dOis.getClassLoader());
 
           Method libLoader = objClass.getMethod("loadLibraries", LinkedList.class);
           try {
             libLoader.invoke(objToExecute, librariesSorted);
+
+            log.info("2. List of already loaded libraries: ");
+            listAllLoadedNativeLibrariesFromJVM();
+
             result = runMethod.invoke(objToExecute, pValues);
           } catch (InvocationTargetException e1) {
             log.error("InvocationTargetException after loading the libraries");
@@ -555,6 +602,20 @@ public class AppHandler {
     } catch (IOException e) {
       log.error("Error while extracting the jar file: " + e);
       e.printStackTrace();
+    }
+  }
+
+  private void listAllLoadedNativeLibrariesFromJVM() {
+    ClassLoader appLoader = ClassLoader.getSystemClassLoader();
+    ClassLoader currentLoader = AppHandler.class.getClassLoader();
+    ClassLoader objLoader = objToExecute.getClass().getClassLoader();
+    ClassLoader dOisLoader = dOis.getClassLoader();
+
+    // ClassLoader[] loaders = new ClassLoader[] {appLoader, currentLoader, objLoader};
+    ClassLoader[] loaders = new ClassLoader[] {objLoader};
+    final String[] libraries = ClassScope.getLoadedLibraries(loaders);
+    for (String library : libraries) {
+      System.out.println(library);
     }
   }
 }

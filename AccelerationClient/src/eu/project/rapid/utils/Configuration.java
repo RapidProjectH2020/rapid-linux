@@ -1,18 +1,14 @@
 package eu.project.rapid.utils;
 
-import static eu.project.rapid.utils.Constants.AC_RM_PORT_DEFAULT;
 import static eu.project.rapid.utils.Constants.AC_RM_PORT_KEY;
 import static eu.project.rapid.utils.Constants.ASYMMETRIC_ALG_DEFAULT;
 import static eu.project.rapid.utils.Constants.ASYMMETRIC_ALG_KEY;
-import static eu.project.rapid.utils.Constants.AS_PORT_DEFAULT;
 import static eu.project.rapid.utils.Constants.AS_PORT_KEY;
-import static eu.project.rapid.utils.Constants.AS_PORT_SSL_DEFAULT;
 import static eu.project.rapid.utils.Constants.AS_PORT_SSL_KEY;
 import static eu.project.rapid.utils.Constants.CONFIG_PROPERTIES;
 import static eu.project.rapid.utils.Constants.CONNECT_PREV_VM_DEFAULT;
 import static eu.project.rapid.utils.Constants.CONNECT_PREV_VM_KEY;
 import static eu.project.rapid.utils.Constants.DS_IP_KEY;
-import static eu.project.rapid.utils.Constants.DS_PORT_DEFAULT;
 import static eu.project.rapid.utils.Constants.DS_PORT_KEY;
 import static eu.project.rapid.utils.Constants.RAPID_FOLDER_CLIENT_DEFAULT;
 import static eu.project.rapid.utils.Constants.RAPID_FOLDER_CLIENT_KEY;
@@ -22,7 +18,6 @@ import static eu.project.rapid.utils.Constants.SHARED_PREFS_DEFAULT;
 import static eu.project.rapid.utils.Constants.SHARED_PREFS_KEY;
 import static eu.project.rapid.utils.Constants.SLAM_IP_DEFAULT;
 import static eu.project.rapid.utils.Constants.SLAM_IP_KEY;
-import static eu.project.rapid.utils.Constants.SLAM_PORT_DEFAULT;
 import static eu.project.rapid.utils.Constants.SLAM_PORT_KEY;
 import static eu.project.rapid.utils.Constants.SSL_CA_TRUSTSTORE_DEFAULT;
 import static eu.project.rapid.utils.Constants.SSL_CA_TRUSTSTORE_KEY;
@@ -63,6 +58,7 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 import eu.project.rapid.common.Clone;
+import eu.project.rapid.common.RapidConstants;
 import eu.project.rapid.common.RapidConstants.REGIME;
 // import org.bouncycastle.jce.provider.BouncyCastleProvider;
 
@@ -100,6 +96,9 @@ public final class Configuration {
 
   private String slamIp;
   private int slamPort;
+
+  private String vmmIp;
+  private int vmmPort;
 
   private String gvirtusIp;
   private int gvirtusPort;
@@ -150,20 +149,24 @@ public final class Configuration {
         props.load(is);
 
         // AS initialization parameters
-        asPort = Integer.parseInt(props.getProperty(AS_PORT_KEY, AS_PORT_DEFAULT));
-        asPortSsl = Integer.parseInt(props.getProperty(AS_PORT_SSL_KEY, AS_PORT_SSL_DEFAULT));
+        asPort = Integer.parseInt(
+            props.getProperty(AS_PORT_KEY, Integer.toString(RapidConstants.DEFAULT_VM_PORT)));
+        asPortSsl = Integer.parseInt(props.getProperty(AS_PORT_SSL_KEY,
+            Integer.toString(RapidConstants.DEFAULT_VM_PORT_SSL)));
         log.info(AS_PORT_KEY + ": " + asPort);
         log.info(AS_PORT_SSL_KEY + ": " + asPortSsl);
 
         // DS IP and port
         dsIp = props.getProperty(DS_IP_KEY);
-        dsPort = Integer.parseInt(props.getProperty(DS_PORT_KEY, DS_PORT_DEFAULT));
+        dsPort = Integer.parseInt(
+            props.getProperty(DS_PORT_KEY, Integer.toString(RapidConstants.DEFAULT_DS_PORT)));
         log.info(DS_IP_KEY + ": " + dsIp);
         log.info(DS_PORT_KEY + ": " + dsPort);
 
         // SLAM IP and port
         slamIp = props.getProperty(SLAM_IP_KEY, SLAM_IP_DEFAULT);
-        slamPort = Integer.parseInt(props.getProperty(SLAM_PORT_KEY, SLAM_PORT_DEFAULT));
+        slamPort = Integer.parseInt(
+            props.getProperty(SLAM_PORT_KEY, Integer.toString(RapidConstants.DEFAULT_SLAM_PORT)));
         log.info(SLAM_IP_KEY + ": " + slamIp);
         log.info(SLAM_PORT_KEY + ": " + slamPort);
 
@@ -181,17 +184,19 @@ public final class Configuration {
         rapidLogFile = rapidFolder + File.separator + rapidLogFile;
 
         // DB variables
-        rapidDbName = props.getProperty(Constants.DB_FILE_NAME_KEY, Constants.DB_FILE_NAME_DEFAULT);
-        dbDriver =
-            props.getProperty(Constants.DB_JDBC_DRIVER_KEY, Constants.DB_JDBC_DRIVER_DEFAULT);
-        dbUrl = props.getProperty(Constants.DB_URL_KEY, Constants.DB_URL_DEFAULT);
-        // User and pass should not be null, otherwise DB will not work
-        dbUser = props.getProperty(Constants.DB_USER_KEY).trim();
-        dbPass = props.getProperty(Constants.DB_PASS_KEY).trim();
+        // rapidDbName = props.getProperty(Constants.DB_FILE_NAME_KEY,
+        // Constants.DB_FILE_NAME_DEFAULT);
+        // dbDriver =
+        // props.getProperty(Constants.DB_JDBC_DRIVER_KEY, Constants.DB_JDBC_DRIVER_DEFAULT);
+        // dbUrl = props.getProperty(Constants.DB_URL_KEY, Constants.DB_URL_DEFAULT);
+        // // User and pass should not be null, otherwise DB will not work
+        // dbUser = props.getProperty(Constants.DB_USER_KEY).trim();
+        // dbPass = props.getProperty(Constants.DB_PASS_KEY).trim();
         // assert (dbUser != null && dbPass != null);
 
         // AC_RM configuration listening port
-        acRmPort = Integer.parseInt(props.getProperty(AC_RM_PORT_KEY, AC_RM_PORT_DEFAULT));
+        acRmPort = Integer.parseInt(
+            props.getProperty(AC_RM_PORT_KEY, Integer.toString(RapidConstants.AC_RM_PORT_DEFAULT)));
         sharedPrefsFile = props.getProperty(SHARED_PREFS_KEY, SHARED_PREFS_DEFAULT);
         sharedPrefsFile = rapidFolder + File.separator + sharedPrefsFile;
 
@@ -200,8 +205,13 @@ public final class Configuration {
 
         // GVirtuS ip and port
         gvirtusIp = props.getProperty(Constants.GVIRTUS_IP_KEY);
-        gvirtusPort = Integer.parseInt(
-            props.getProperty(Constants.GVIRTUS_PORT_KEY, Constants.GVIRTUS_PORT_DEFAULT));
+        gvirtusPort = Integer.parseInt(props.getProperty(Constants.GVIRTUS_PORT_KEY,
+            Integer.toString(RapidConstants.DEFAULT_GVIRTUS_PORT)));
+
+        // GVirtuS ip and port
+        vmmIp = props.getProperty(Constants.VMM_IP_KEY);
+        vmmPort = Integer.parseInt(props.getProperty(Constants.VMM_PORT_KEY,
+            Integer.toString(RapidConstants.DEFAULT_VMM_PORT)));
 
         // SSL parameters
         connectSsl = props.getProperty(Constants.CONNECT_SSL_KEY, Constants.CONNECT_SSL_DEFAULT)
@@ -788,5 +798,33 @@ public final class Configuration {
    */
   public void setGvirtusPort(int gvirtusPort) {
     this.gvirtusPort = gvirtusPort;
+  }
+
+  /**
+   * @return the vmmIp
+   */
+  public String getVmmIp() {
+    return vmmIp;
+  }
+
+  /**
+   * @param vmmIp the vmmIp to set
+   */
+  public void setVmmIp(String vmmIp) {
+    this.vmmIp = vmmIp;
+  }
+
+  /**
+   * @return the vmmPort
+   */
+  public int getVmmPort() {
+    return vmmPort;
+  }
+
+  /**
+   * @param vmmPort the vmmPort to set
+   */
+  public void setVmmPort(int vmmPort) {
+    this.vmmPort = vmmPort;
   }
 }

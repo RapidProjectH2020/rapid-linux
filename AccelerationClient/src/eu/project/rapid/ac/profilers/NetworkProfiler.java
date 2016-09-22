@@ -5,8 +5,6 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.Socket;
-import java.net.SocketException;
-import java.net.UnknownHostException;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.concurrent.Executors;
@@ -123,9 +121,9 @@ public class NetworkProfiler {
       scheduler = Executors.newScheduledThreadPool(3);
       rttHandler = scheduler.scheduleAtFixedRate(new RttMeasurer(), 0, 13 * 60, TimeUnit.SECONDS);
       downloadHandler =
-          scheduler.scheduleAtFixedRate(new DownloadRateMeasurer(), 5, 29 * 60, TimeUnit.SECONDS);
+          scheduler.scheduleAtFixedRate(new DownloadRateMeasurer(), 4, 29 * 60, TimeUnit.SECONDS);
       uploadHandler =
-          scheduler.scheduleAtFixedRate(new UploadRateMeasurer(), 10, 31 * 60, TimeUnit.SECONDS);
+          scheduler.scheduleAtFixedRate(new UploadRateMeasurer(), 8, 31 * 60, TimeUnit.SECONDS);
     }
   }
 
@@ -186,8 +184,6 @@ public class NetworkProfiler {
           tempRtt = rttInfinite;
         }
       }
-    } catch (UnknownHostException e1) {
-      log.error("Error while sending PING message: " + e1);
     } catch (IOException e1) {
       log.error("Error while sending PING message: " + e1);
     }
@@ -239,10 +235,6 @@ public class NetworkProfiler {
         rxBytes += is.read(buffer);
         os.write(1);
       }
-    } catch (UnknownHostException e) {
-      log.error("Error while measuring dlRate: " + e);
-    } catch (SocketException e) {
-      log.error("Error while measuring dlRate: " + e);
     } catch (IOException e) {
       log.error("Error while measuring dlRate: " + e);
     } finally {
@@ -268,10 +260,6 @@ public class NetworkProfiler {
         is.read();
       }
 
-    } catch (UnknownHostException e) {
-      log.error("Error while measuring ulRate: " + e);
-    } catch (SocketException e) {
-      log.error("Error while measuring ulRate: " + e);
     } catch (IOException e) {
       log.error("Error while measuring ulRate: " + e);
     } finally {
@@ -287,10 +275,6 @@ public class NetworkProfiler {
 
         addNewUlRateEstimate(txBytes, txTime);
 
-      } catch (UnknownHostException e) {
-        log.error("Error while receiving ulRate from VM: " + e);
-      } catch (IOException e) {
-        log.error("Error while receiving ulRate from VM: " + e);
       } catch (Exception e) {
         log.error("Error while receiving ulRate from VM: " + e);
       }

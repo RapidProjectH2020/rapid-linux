@@ -22,7 +22,7 @@ public class HelloWorld extends Remoteable {
 
   @SuppressWarnings("unused")
   private void rapidhelloWorld() {
-    System.out.println("Hello World!");
+    System.out.println("Hello World 3 +++++++++++++++++++++++++++++++++++++++++++++++++++!");
   }
 
   @Override

@@ -21,7 +21,6 @@ import javax.net.ssl.SSLSocket;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
-import eu.project.rapid.ac.profilers.NetworkProfiler;
 import eu.project.rapid.ac.profilers.Profiler;
 import eu.project.rapid.ac.rm.AC_RM;
 import eu.project.rapid.common.Clone;
@@ -57,7 +56,7 @@ public class DFE {
   private String jarName; // The jar name without ".jar" extension
   private long jarSize;
   private File jarFile;
-  private int userID;
+  private long userID;
   private int nrVMs = 1;
   private boolean connectedWithAs;
 
@@ -111,7 +110,7 @@ public class DFE {
     // Starts the AC_RM component, which is unique for each device and handles the registration
     // mechanism with the DS.
     startAcRm();
-    // Talk with the AC_RM to get the info about the vm to connect to.
+    // Talk with the AC_RM to get the info about the VM to connect to.
     vm = initialize();
 
     if (vm == null) {
@@ -140,26 +139,27 @@ public class DFE {
           // config.setGvirtusIp(TODO: ip address of the physical machine where the VM is running);
         }
 
-        NetworkProfiler.startNetworkMonitoring(config);
+        // FIXME uncomment this, commented just to perform quick tests.
+        // NetworkProfiler.startNetworkMonitoring(config);
 
         // Start waiting for the network profiling to be finished.
         // Wait maximum for 10 seconds and then give up, since something could have gone wrong.
-        long startWaiting = System.currentTimeMillis();
-        while (NetworkProfiler.rtt == NetworkProfiler.rttInfinite
-            || NetworkProfiler.lastUlRate == -1 || NetworkProfiler.lastDlRate == -1) {
-
-          if ((System.currentTimeMillis() - startWaiting) > 30 * 1000) {
-            log.warn("Too much time for the network profiling to finish, postponing for later.");
-            break;
-          }
-
-          try {
-            Thread.sleep(1000);
-            log.debug("Waiting for network profiling to finish...");
-          } catch (InterruptedException e) {
-          }
-        }
-        log.debug("Network profiling finished.");
+        // long startWaiting = System.currentTimeMillis();
+        // while (NetworkProfiler.rtt == NetworkProfiler.rttInfinite
+        // || NetworkProfiler.lastUlRate == -1 || NetworkProfiler.lastDlRate == -1) {
+        //
+        // if ((System.currentTimeMillis() - startWaiting) > 10 * 1000) {
+        // log.warn("Too much time for the network profiling to finish, postponing for later.");
+        // break;
+        // }
+        //
+        // try {
+        // Thread.sleep(1000);
+        // log.debug("Waiting for network profiling to finish...");
+        // } catch (InterruptedException e) {
+        // }
+        // }
+        // log.debug("Network profiling finished.");
         registerWithAs();
       }
 
@@ -324,7 +324,7 @@ public class DFE {
 
         // Ask the AC_RM for the VM to connect to.
         os.write(RapidMessages.AC_HELLO_AC_RM);
-        userID = ois.readInt();
+        userID = ois.readLong();
         try {
           vm = (Clone) ois.readObject();
         } catch (ClassNotFoundException e) {
@@ -332,11 +332,12 @@ public class DFE {
         }
         log.info("------ Finished talking to AC_RM, received userID=" + userID + " and VM=" + vm);
 
-        // FIXME: Remove the following two lines and use the VM received from the AC_RM.
-        // Figure out why AC_RM returns VM with IP 127.0.0.1
-        vm = new Clone("FIXME", "10.0.0.3");
-        log.info("------ FIXME: temporarely using this VM while trying to solve the AC_RM problem: "
-            + vm);
+        // // FIXME: Remove the following two lines and use the VM received from the AC_RM.
+        // // Figure out why AC_RM returns VM with IP 127.0.0.1
+        // vm = new Clone("FIXME", "10.0.0.3");
+        // log.info("------ FIXME: temporarely using this VM while trying to solve the AC_RM
+        // problem: "
+        // + vm);
 
         connectionAcRmSuccess = true;
       } catch (IOException e) {
@@ -375,9 +376,8 @@ public class DFE {
 
       log.info("AC_RM started");
 
-    } catch (IOException e1) {
-      // TODO Auto-generated catch block
-      e1.printStackTrace();
+    } catch (IOException e) {
+      log.error("Could not start the AC_RM: " + e);
     }
   }
 
@@ -434,13 +434,23 @@ public class DFE {
           result = executeLocally(m, values, o);
         }
       } catch (IllegalArgumentException | SecurityException | IllegalAccessException
-          | InvocationTargetException | ClassNotFoundException | NoSuchMethodException e) {
+          | InvocationTargetException | ClassNotFoundException | NoSuchMethodException
+          | IOException e) {
         log.error("Error while calling executeRemotely: " + e);
         e.printStackTrace();
+
+        log.warn("Running the method locally");
+        try {
+          result = executeLocally(m, values, o);
+        } catch (IllegalArgumentException | IllegalAccessException | InvocationTargetException e1) {
+          log.warn("The local execution failed: " + e1);
+          e1.printStackTrace();
+        }
       }
     }
 
     return result;
+
   }
 
 
@@ -490,10 +500,11 @@ public class DFE {
    * @throws NoSuchMethodException
    * @throws ClassNotFoundException
    * @throws SecurityException
+   * @throws IOException
    */
   private Object executeRemotely(Method m, Object[] pValues, Object o)
       throws IllegalArgumentException, IllegalAccessException, InvocationTargetException,
-      SecurityException, ClassNotFoundException, NoSuchMethodException {
+      SecurityException, ClassNotFoundException, NoSuchMethodException, IOException {
     Object result = null;
 
     try {
@@ -513,23 +524,23 @@ public class DFE {
     Profiler profiler = new Profiler(jarName, m.getName(), ExecLocation.REMOTE, config);
     profiler.start();
 
-    try {
-      long startTime = System.nanoTime();
-      vmOs.write(RapidMessages.AC_OFFLOAD_REQ_AS);
-      ResultContainer resultContainer = sendAndExecute(m, pValues, o);
-      result = resultContainer.functionResult;
+    // try {
+    long startTime = System.nanoTime();
+    vmOs.write(RapidMessages.AC_OFFLOAD_REQ_AS);
+    ResultContainer resultContainer = sendAndExecute(m, pValues, o);
+    result = resultContainer.functionResult;
 
-      long remoteDuration = System.nanoTime() - startTime;
-      log.info("REMOTE " + m.getName() + ": Actual Send-Receive duration - "
-          + remoteDuration / Constants.MEGA + "ms");
-      // Collect execution statistics
-      profiler.stop(prepareDataDuration, resultContainer.pureExecutionDuration);
-    } catch (Exception e) {
-      // No such host exists, execute locally
-      log.error("REMOTE ERROR: " + m.getName() + ": " + e);
-      e.printStackTrace();
-      result = executeLocally(m, pValues, o);
-    }
+    long remoteDuration = System.nanoTime() - startTime;
+    log.info("REMOTE " + m.getName() + ": Actual Send-Receive duration - "
+        + remoteDuration / Constants.MEGA + "ms");
+    // Collect execution statistics
+    profiler.stop(prepareDataDuration, resultContainer.pureExecutionDuration);
+    // } catch (Exception e) {
+    // // No such host exists, execute locally
+    // log.error("REMOTE ERROR: " + m.getName() + ": " + e);
+    // e.printStackTrace();
+    // result = executeLocally(m, pValues, o);
+    // }
 
     return result;
   }

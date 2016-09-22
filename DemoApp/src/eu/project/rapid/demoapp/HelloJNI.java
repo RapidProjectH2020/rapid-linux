@@ -14,15 +14,24 @@ public class HelloJNI extends Remoteable {
   static {
     try {
       if (Utils.isMac()) {
-        System.load("/Users/sokol/rapid-client/demo/HelloJNI.jnilib");
+        System.loadLibrary("HelloJNI");
       } else if (Utils.isLinux()) {
-        System.load("/home/gjigandi/rapid-client/libhellojni.so");
+        System.loadLibrary("hellojni");
         // System.err.println("Sokol: library not compiled for Linux.");
       } else if (Utils.isWindows()) {
         System.err.println("Sokol: library not compiled for Windows.");
       }
     } catch (UnsatisfiedLinkError e) {
-      // log.info("Could not load native library, maybe this is running on the clone.");
+      System.err.println("Could not load native library, maybe this is running on the clone.");
+      e.printStackTrace();
+    }
+
+    try {
+      System.out.println("Loading HandTrackerJNI...");
+      System.loadLibrary("HandTrackerJNI");
+      System.out.println("HandTrackerJNI loaded.");
+    } catch (UnsatisfiedLinkError e) {
+      System.err.println("Could not load HandTrackerJNI.");
     }
   }
 

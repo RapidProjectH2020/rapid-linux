@@ -14,15 +14,13 @@ public class RapidClassLoader extends ClassLoader {
 
   private final Logger log = LogManager.getLogger(RapidClassLoader.class.getSimpleName());
 
-  private String jarFilePath; // Path to the jar file
   private String appFolder; // Path to the app folder where the jar file will be extracted
   private Hashtable<String, Class<?>> classes = new Hashtable<>(); // used to cache already defined
   // classes
 
-  public RapidClassLoader(String appFolder, String jarFilePath) {
+  public RapidClassLoader(String appFolder) {
     super(RapidClassLoader.class.getClassLoader()); // calls the parent class loader's constructor
     this.appFolder = appFolder;
-    this.jarFilePath = jarFilePath;
   }
 
   public Class<?> loadClass(String className) throws ClassNotFoundException {
@@ -77,5 +75,9 @@ public class RapidClassLoader extends ClassLoader {
     in.readFully(buff);
     in.close();
     return buff;
+  }
+
+  public void setAppFolder(String appFolder) {
+    this.appFolder = appFolder;
   }
 }

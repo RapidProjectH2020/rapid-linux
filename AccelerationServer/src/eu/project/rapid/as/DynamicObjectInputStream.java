@@ -42,8 +42,11 @@ public class DynamicObjectInputStream extends ObjectInputStream {
     return null;
   }
 
-  public void setJar(String appFolder, String jarFilePath) {
-    rapidClassLoader = new RapidClassLoader(appFolder, jarFilePath);
+  public void setClassLoader(RapidClassLoader rapidClassLoader) {
+    this.rapidClassLoader = rapidClassLoader;
   }
 
+  public ClassLoader getClassLoader() {
+    return rapidClassLoader;
+  }
 }

@@ -4,6 +4,7 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 import eu.project.rapid.ac.DFE;
+import eu.project.rapid.common.RapidConstants.ExecLocation;
 
 public class DemoApp {
   private DFE dfe;
@@ -13,18 +14,19 @@ public class DemoApp {
 
   public DemoApp() {
     dfe = DFE.getInstance();
+    dfe.setUserChoice(ExecLocation.REMOTE);
 
-    // log.info("Testing JNI...");
-    // testHelloJni();
+    log.info("Testing JNI...");
+    testHelloJni();
 
     log.info("Testing HelloWorld...");
     testHelloWorld();
-
-    log.info("Testing Sum of two numbers...");
-    testSumNum();
-
-    log.info("Testing NQueens...");
-    testNQueens();
+    //
+    // log.info("Testing Sum of two numbers...");
+    // testSumNum();
+    //
+    // log.info("Testing NQueens...");
+    // testNQueens();
 
     dfe.destroy();
 
