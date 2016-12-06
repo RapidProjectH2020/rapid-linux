@@ -13,10 +13,6 @@ import java.io.OutputStream;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.net.UnknownHostException;
-import java.util.ArrayList;
-import java.util.Iterator;
-import java.util.List;
-import java.util.NoSuchElementException;
 import java.util.Properties;
 
 import org.apache.logging.log4j.LogManager;
@@ -127,47 +123,31 @@ public class AC_RM {
       if (!registerAsPrev) { // Get a new VM
         log.info("Registering as NEW with ID:" + myId + " with the DS...");
         dsOut.writeByte(RapidMessages.AC_REGISTER_NEW_DS);
-        dsOut.writeLong(myId);
-        dsOut.writeInt(RapidConstants.OS.LINUX.ordinal());
-        dsOut.writeInt(RapidConstants.REGISTER_WITHOUT_QOS_PARAMS); // TODO QoS support to come in
-                                                                    // the future.
-        dsOut.flush();
-
-        // Receive message format: status (java byte), userId (java long), ipList (java object)
-        byte status = dsIn.readByte();
-        log.info("Return Status from DS: " + (status == RapidMessages.OK ? "OK" : "ERROR"));
-        if (status == RapidMessages.OK) {
-          myId = dsIn.readLong();
-          log.info("New userId is: " + myId);
-
-          // Receiving a list with SLAM IPs
-          ArrayList<String> ipList = (ArrayList<String>) dsIn.readObject();
-          chooseBestSlam(ipList);
-          return true;
-        }
       } else { // Register and ask for the previous VM
         log.info("Registering as PREV with ID: " + myId + " with the DS...");
         dsOut.writeByte(RapidMessages.AC_REGISTER_PREV_DS);
-        dsOut.writeLong(myId);
-        dsOut.writeInt(RapidConstants.OS.LINUX.ordinal());
-        dsOut.writeInt(RapidConstants.REGISTER_WITHOUT_QOS_PARAMS); // TODO QoS support to come in
-                                                                    // the future.
-        dsOut.flush();
-
-        // Receive message format: status (java byte), userId (java long), ipList (java object)
-        byte status = dsIn.readByte();
-        log.info("Return status from DS: " + (status == RapidMessages.OK ? "OK" : "ERROR"));
-
-        if (status == RapidMessages.OK) {
-          myId = dsIn.readLong();
-          log.info("userId: " + myId);
-          String slamIp = dsIn.readUTF();
-          log.info("slamIp: " + slamIp);
-          config.setSlamIp(slamIp);
-          return true;
-        }
       }
-    } catch (ClassNotFoundException | IOException e) {
+
+      dsOut.writeLong(myId);
+      dsOut.writeInt(RapidConstants.OS.LINUX.ordinal());
+      dsOut.writeInt(RapidConstants.REGISTER_WITHOUT_QOS_PARAMS); // TODO QoS support to come in
+                                                                  // the future.
+      dsOut.flush();
+
+      // Receive message format: status (java byte), userId (java long), ipList (java object)
+      byte status = dsIn.readByte();
+      log.info("Return Status from DS: " + (status == RapidMessages.OK ? "OK" : "ERROR"));
+      if (status == RapidMessages.OK) {
+        myId = dsIn.readLong();
+        log.info("New userId is: " + myId);
+
+        // Receiving the SLAM IP
+        String slamIp = dsIn.readUTF();
+        log.info("slamIp: " + slamIp);
+        config.setSlamIp(slamIp);
+        return true;
+      }
+    } catch (IOException e) {
       log.error("Could not connect with the DS: " + e);
     }
 
@@ -212,21 +192,21 @@ public class AC_RM {
     }
   }
 
-  private void chooseBestSlam(List<String> slamIPs) {
-    // FIXME Currently just choose the first one.
-    log.info("Choosing the best SLAM from the list...");
-    if (slamIPs == null || slamIPs.size() == 0) {
-      throw new NoSuchElementException("Exptected at least one SLAM, don't know how to proceed!");
-    } else {
-      Iterator<String> ipListIterator = slamIPs.iterator();
-      log.info("Received SLAM IP List: ");
-      while (ipListIterator.hasNext()) {
-        log.info(ipListIterator.next());
-      }
-
-      config.setSlamIp(slamIPs.get(0));
-    }
-  }
+  // private void chooseBestSlam(List<String> slamIPs) {
+  // // FIXME Currently just choose the first one.
+  // log.info("Choosing the best SLAM from the list...");
+  // if (slamIPs == null || slamIPs.size() == 0) {
+  // throw new NoSuchElementException("Exptected at least one SLAM, don't know how to proceed!");
+  // } else {
+  // Iterator<String> ipListIterator = slamIPs.iterator();
+  // log.info("Received SLAM IP List: ");
+  // while (ipListIterator.hasNext()) {
+  // log.info(ipListIterator.next());
+  // }
+  //
+  // config.setSlamIp(slamIPs.get(0));
+  // }
+  // }
 
   /**
    * FIXME Implement this after talking to Omer.
