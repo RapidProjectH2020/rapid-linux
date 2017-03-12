@@ -8,6 +8,7 @@ import java.io.ObjectOutputStream;
 import java.net.InetAddress;
 import java.net.Socket;
 import java.net.UnknownHostException;
+import java.util.Random;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -33,14 +34,27 @@ public class AccelerationServer {
   private static final Logger log = LogManager.getLogger(AccelerationServer.class.getSimpleName());
   private Configuration config;
 
+  // When doing tests about send/receive data
+  // To avoid creating the objects in the real deployment
+  private static final boolean TESTING_UL_DL_RATE = true;
+  public static byte[] bytesToSend1K;
+  public static byte[] bytesToSend1M;
+
   // The ID of the user that is requesting this VM.
   private long userId = -1; // The userId will be given by the VMM
   private int vmId = -1; // The vmId will be assigned by the DS
   private String vmIp; // The vmIp should be extracted by us
 
   public AccelerationServer() {
-    log.info("Starting the AS 15/09/2016 10:39");
+    log.info("Starting the AS ");
     config = new Configuration(AccelerationServer.class.getSimpleName(), REGIME.AS);
+
+    if (TESTING_UL_DL_RATE) {
+      bytesToSend1K = new byte[1024];
+      bytesToSend1M = new byte[1024 * 1024];
+      new Random().nextBytes(bytesToSend1K);
+      new Random().nextBytes(bytesToSend1M);
+    }
 
     if (config.getSlamIp() == null) {
       log.warn("The configuration file does not contain the SLAM IP.");
@@ -87,6 +101,8 @@ public class AccelerationServer {
 
   private void waitForNetworkToBeUp() {
     boolean hostMachineReachable = false;
+    int nrTimes = 0;
+    int maxNrTimes = 10;
     do {
       try {
         // The VM runs on the host machine, so checking if we can ping the vmmIP in
@@ -94,11 +110,13 @@ public class AccelerationServer {
         // We should definitely be able to do that, otherwise this clone is useless if not
         // connected to the network.
 
-        InetAddress hostMachineAddress = InetAddress.getByName(config.getVmmIp());
+        // InetAddress hostMachineAddress = InetAddress.getByName(config.getVmmIp());
+        InetAddress hostMachineAddress = InetAddress.getByName("127.0.0.1");
         try {
           log.info(
               "Trying to ping the host machine " + hostMachineAddress.getHostAddress() + "...");
           hostMachineReachable = hostMachineAddress.isReachable(1000);
+          nrTimes++;
           try {
             Thread.sleep(1 * 1000);
           } catch (InterruptedException e) {
@@ -109,8 +127,15 @@ public class AccelerationServer {
       } catch (UnknownHostException e1) {
         log.error("Error while getting hostname: " + e1);
       }
-    } while (!hostMachineReachable);
-    log.info("Host machine replied to ping. Network interface is up and running.");
+    } while (!hostMachineReachable && nrTimes < maxNrTimes);
+
+    if (hostMachineReachable) {
+      log.info("Host machine replied to ping. Network interface is up and running.");
+    } else {
+      log.warn(
+          "Host machine didn't reply to ping. Giving up pinging it and proceeding with execution."
+              + " Maybe this is a test running on a different machine.");
+    }
   }
 
   /**

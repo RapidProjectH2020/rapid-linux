@@ -144,6 +144,51 @@ public class AppHandler {
             oos.flush();
             oos.reset();
             break;
+
+          case RapidMessages.SEND_INT:
+            // Used for testing how much it takes to read an int with different data rates.
+            dOis.readInt();
+            os.write(1);
+            break;
+
+          case RapidMessages.SEND_BYTES:
+            // Used for testing how much it takes to read an object of different size with
+            // different data rates.
+            try {
+              dOis.readObject();
+            } catch (ClassNotFoundException e) {
+              log.error("Error while receiving the byte from the client: " + e);
+            }
+            os.write(1);
+            break;
+
+          case RapidMessages.RECEIVE_INT:
+            // The phone is asking the clone to send an int
+            // Used for measuring the costs of data receiving on the phone
+            long s = System.nanoTime();
+            oos.writeInt((int) System.currentTimeMillis());
+            oos.flush();
+            is.read();
+            s = System.nanoTime() - s;
+            oos.writeLong(s);
+            oos.flush();
+
+            break;
+
+          case RapidMessages.RECEIVE_BYTES:
+            // The phone is asking the clone to send an object of specific size
+            // Used for measuring the costs of data receiving on the phone
+            int size = dOis.readInt();
+            s = System.nanoTime();
+            oos.writeObject(
+                size == 1024 ? AccelerationServer.bytesToSend1K : AccelerationServer.bytesToSend1M);
+            oos.flush();
+            is.read();
+            s = System.nanoTime() - s;
+            oos.writeLong(s);
+            oos.flush();
+
+            break;
         }
       } while (command != -1);
 

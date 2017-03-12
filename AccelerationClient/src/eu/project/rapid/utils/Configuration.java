@@ -259,7 +259,8 @@ public final class Configuration {
       }
 
       kmf = KeyManagerFactory.getInstance(KeyManagerFactory.getDefaultAlgorithm());
-      kmf.init(keyStore, sslKeyStorePassword.toCharArray());
+      // kmf.init(keyStore, sslKeyStorePassword.toCharArray());
+      kmf.init(keyStore, sslCertPassword.toCharArray());
 
       // privateKey = (PrivateKey) keyStore.getKey(sslCertAlias, "kot".toCharArray());
       Certificate cert = keyStore.getCertificate(sslCertAlias);

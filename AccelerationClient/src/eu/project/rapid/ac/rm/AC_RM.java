@@ -125,14 +125,17 @@ public class AC_RM {
         ObjectOutputStream dsOut = new ObjectOutputStream(dsSocket.getOutputStream());
         ObjectInputStream dsIn = new ObjectInputStream(dsSocket.getInputStream())) {
 
-      if (!registerAsPrev) { // Get a new VM
-        log.info("Registering as NEW with ID:" + myId + " with the DS...");
-        dsOut.writeByte(RapidMessages.AC_REGISTER_NEW_DS);
-        dsOut.writeLong(myId);
-      } else { // Register and ask for the previous VM
+      if (registerAsPrev) { // Get a new VM
         log.info("Registering as PREV with ID: " + myId + " with the DS...");
         dsOut.writeByte(RapidMessages.AC_REGISTER_PREV_DS);
         dsOut.writeLong(myId);
+      } else { // Register and ask for the previous VM
+        log.info("Registering as NEW with ID:" + myId + " with the DS...");
+        dsOut.writeByte(RapidMessages.AC_REGISTER_NEW_DS);
+        log.info("Sending my ID: " + myId);
+        dsOut.writeLong(myId);
+
+        log.info("Sending VM details...");
         // FIXME: should not use static values here.
         dsOut.writeInt(vmNrVCPUs); // send vcpuNum as int
         dsOut.writeInt(vmMemSize); // send memSize as int

@@ -1,6 +1,7 @@
 package eu.project.rapid.ac;
 
 import java.io.BufferedReader;
+import java.io.BufferedWriter;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
@@ -21,12 +22,15 @@ import javax.net.ssl.SSLSocket;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
+import eu.project.rapid.ac.profilers.NetworkProfiler;
 import eu.project.rapid.ac.profilers.Profiler;
 import eu.project.rapid.ac.rm.AC_RM;
 import eu.project.rapid.common.Clone;
+import eu.project.rapid.common.RapidConstants.COMM_TYPE;
 import eu.project.rapid.common.RapidConstants.ExecLocation;
 import eu.project.rapid.common.RapidConstants.REGIME;
 import eu.project.rapid.common.RapidMessages;
+import eu.project.rapid.common.RapidUtils;
 import eu.project.rapid.gvirtusfe.Frontend;
 import eu.project.rapid.utils.Configuration;
 import eu.project.rapid.utils.Constants;
@@ -58,7 +62,7 @@ public class DFE {
   private File jarFile;
   private long userID;
   private int nrVMs = 1;
-  private boolean connectedWithAs;
+  private boolean onLine;
 
   // Socket and streams with the VM
   private Clone vm;
@@ -76,8 +80,12 @@ public class DFE {
   // Constructor to be used by the AS
   private DFE(boolean serverSide) {}
 
-  // Constructor to be used by the application.
   private DFE() {
+    this(null);
+  }
+
+  // Constructor to be used by the application.
+  private DFE(Clone vm) {
     // To prevent instantiating the DFE calling this constructor by Reflection call
     if (instance != null) {
       throw new IllegalStateException("Already initialized.");
@@ -93,6 +101,26 @@ public class DFE {
       log.error("Could not create folder " + config.getRapidFolder() + ": " + e);
     }
 
+    // Get the jar file to send to the AS.
+    createJarFile();
+
+    // If vm != null it means that we are performing some tests with a predefined VM.
+    if (vm == null) {
+      // Starts the AC_RM component, which is unique for each device and handles the registration
+      // mechanism with the DS.
+      startAcRm();
+
+      // Talk with the AC_RM to get the info about the VM to connect to.
+      this.vm = getVmFromAC_RM();
+    } else {
+      this.vm = vm;
+    }
+
+    // Trigger the registration process with the VM.
+    establishConnection();
+  }
+
+  private void createJarFile() {
     // Get the name of the jar file of this app. It will be needed so that the jar can be sent
     // to the AS for offload executions.
     CodeSource codeSource = DFE.class.getProtectionDomain().getCodeSource();
@@ -105,68 +133,6 @@ public class DFE {
           jarFilePath.lastIndexOf("."));
     } else {
       log.warn("Could not get the CodeSource object needed to get the executable of the app");
-    }
-
-    // Starts the AC_RM component, which is unique for each device and handles the registration
-    // mechanism with the DS.
-    startAcRm();
-    // Talk with the AC_RM to get the info about the VM to connect to.
-    vm = initialize();
-
-    if (vm == null) {
-      log.warn("It was not possible to get a VM, only local execution will be possible.");
-    } else {
-      config.setVm(vm);
-      log.info("Received VM " + vm + " from AC_RM, connecting now...");
-
-      if (config.isConnectSsl() && vm.isCryptoPossible()) {
-        connectedWithAs = connectWitAsSsl();
-        if (!connectedWithAs) {
-          log.error("It was not possible to connect with the VM using SSL, connecting in clear...");
-          connectedWithAs = connectWitAs();
-        }
-      } else {
-        connectedWithAs = connectWitAs();
-      }
-
-      if (connectedWithAs) {
-        log.info("Connected to VM");
-
-        if (config.getGvirtusIp() == null) {
-          // If gvirtusIp is null, then gvirtus backend is running on the physical machine where
-          // the VM is running.
-          // Try to find a way here to get the ip address of the physical machine.
-          // config.setGvirtusIp(TODO: ip address of the physical machine where the VM is running);
-        }
-
-        // FIXME uncomment this, commented just to perform quick tests.
-        // NetworkProfiler.startNetworkMonitoring(config);
-
-        // Start waiting for the network profiling to be finished.
-        // Wait maximum for 10 seconds and then give up, since something could have gone wrong.
-        // long startWaiting = System.currentTimeMillis();
-        // while (NetworkProfiler.rtt == NetworkProfiler.rttInfinite
-        // || NetworkProfiler.lastUlRate == -1 || NetworkProfiler.lastDlRate == -1) {
-        //
-        // if ((System.currentTimeMillis() - startWaiting) > 10 * 1000) {
-        // log.warn("Too much time for the network profiling to finish, postponing for later.");
-        // break;
-        // }
-        //
-        // try {
-        // Thread.sleep(1000);
-        // log.debug("Waiting for network profiling to finish...");
-        // } catch (InterruptedException e) {
-        // }
-        // }
-        // log.debug("Network profiling finished.");
-        registerWithAs();
-      }
-
-      if (config.getGvirtusIp() != null) {
-        // Create a gvirtus frontend object that is responsible for executing the CUDA code.
-        gVirtusFrontend = new Frontend(config.getGvirtusIp(), config.getGvirtusPort());
-      }
     }
   }
 
@@ -185,6 +151,24 @@ public class DFE {
         result = instance;
         if (result == null) {
           instance = result = new DFE();
+        }
+      }
+    }
+
+    return result;
+  }
+
+  public static DFE getInstance(String vmIp) {
+    DFE result = instance;
+
+    if (result == null) {
+      synchronized (DFE.class) {
+        result = instance;
+        if (result == null) {
+          Clone vm = new Clone("", vmIp);
+          vm.setCryptoPossible(true);
+          // vm.set
+          instance = result = new DFE(vm);
         }
       }
     }
@@ -288,28 +272,16 @@ public class DFE {
    * Close the connection with the VM.
    */
   private void closeConnection() {
-    if (vmOis != null) {
-      try {
-        vmOis.close();
-        vmOos.close();
-      } catch (IOException e) {
-        log.error("Error while closing vmStreams: " + e);
-      }
-    }
-    if (vmSocket != null) {
-      try {
-        vmSocket.close();
-      } catch (IOException e) {
-        log.error("Error while closing vmSocket: " + e);
-      }
-    }
+    RapidUtils.closeQuietly(vmOis);
+    RapidUtils.closeQuietly(vmOos);
+    RapidUtils.closeQuietly(vmSocket);
   }
 
   /**
    * Initialize the variables that were stored by previous executions, e.g. the userID, the VM to
    * connect to, etc. Usually these variables will be provided by the AC_RM.
    */
-  private Clone initialize() {
+  private Clone getVmFromAC_RM() {
     // Connect to the AC_RM, which is a server component running on this machine, and ask for the
     // parameters.
 
@@ -350,6 +322,63 @@ public class DFE {
     }
 
     return vm;
+  }
+
+  private void establishConnection() {
+    if (vm == null) {
+      log.warn("It was not possible to get a VM, only local execution will be possible.");
+    } else {
+      config.setVm(vm);
+      log.info("Received VM " + vm + " from AC_RM, connecting now...");
+
+      if (config.isConnectSsl() && vm.isCryptoPossible()) {
+        onLine = connectWitAsSsl();
+      }
+
+      if (!onLine) {
+        log.error("It was not possible to connect with the VM using SSL, connecting in clear...");
+        onLine = connectWitAs();
+      }
+
+      if (onLine) {
+        log.info("Connected to VM");
+
+        if (config.getGvirtusIp() == null) {
+          // If gvirtusIp is null, then gvirtus backend is running on the physical machine where
+          // the VM is running.
+          // Try to find a way here to get the ip address of the physical machine.
+          // config.setGvirtusIp(TODO: ip address of the physical machine where the VM is running);
+        }
+
+        // FIXME uncomment this, commented just to perform quick tests.
+        NetworkProfiler.startNetworkMonitoring(config);
+
+        // Start waiting for the network profiling to be finished.
+        // Wait maximum for 10 seconds and then give up, since something could have gone wrong.
+        long startWaiting = System.currentTimeMillis();
+        while (NetworkProfiler.rtt == NetworkProfiler.rttInfinite
+            || NetworkProfiler.lastUlRate == -1 || NetworkProfiler.lastDlRate == -1) {
+
+          if ((System.currentTimeMillis() - startWaiting) > 10 * 1000) {
+            log.warn("Too much time for the network profiling to finish, postponing for later.");
+            break;
+          }
+
+          try {
+            Thread.sleep(1000);
+            log.debug("Waiting for network profiling to finish...");
+          } catch (InterruptedException e) {
+          }
+        }
+        log.debug("Network profiling finished.");
+        registerWithAs();
+      }
+
+      // if (config.getGvirtusIp() != null) {
+      // // Create a gvirtus frontend object that is responsible for executing the CUDA code.
+      // gVirtusFrontend = new Frontend(config.getGvirtusIp(), config.getGvirtusPort());
+      // }
+    }
   }
 
   /**
@@ -709,5 +738,175 @@ public class DFE {
         this.setUserChoice(ExecLocation.DYNAMIC);
         break;
     }
+  }
+
+
+  /**
+   * Used to measure the costs of connection with the clone when using different communication
+   * types.
+   * 
+   * @param givenCommType CLEAR, SSL
+   * @param buffLogFile
+   * @throws IOException
+   */
+  public void testConnection(COMM_TYPE givenCommType, BufferedWriter buffLogFile)
+      throws IOException {
+
+    if (onLine) {
+      closeConnection();
+    }
+
+    long startTime = System.nanoTime();
+    if (givenCommType == COMM_TYPE.SSL) {
+      connectWitAsSsl();
+    } else {
+      connectWitAs();
+    }
+    long totalTime = System.nanoTime() - startTime;
+
+    if (buffLogFile != null) {
+      buffLogFile.write(totalTime + "\n");
+    }
+  }
+
+  /**
+   * Used to measure the costs of sending data of different size with different communication
+   * protocols.
+   * 
+   * @param givenCommType CLEAR, SSL
+   * @param nrBytesToSend
+   * @param bytesToSend
+   * @param buffLogFile
+   * @return
+   * @throws IOException
+   */
+  public long testSendBytes(int nrBytesToSend, byte[] bytesToSend, BufferedWriter buffLogFile)
+      throws IOException {
+
+    long txTime = -1;
+    long txBytes = -1;
+
+    switch (nrBytesToSend) {
+      case 1:
+        // txBytes = NetworkProfiler.getProcessTxBytes();
+        txTime = System.nanoTime();
+        vmOs.write(RapidMessages.PING);
+        vmIs.read();
+        txTime = System.nanoTime() - txTime;
+        // txBytes = NetworkProfiler.getProcessTxBytes() - txBytes;
+        txBytes = 1;
+        break;
+
+      case 4:
+        vmOs.write(RapidMessages.SEND_INT);
+        // sleep(3*1000);
+
+        // txBytes = NetworkProfiler.getProcessTxBytes();
+        txTime = System.nanoTime();
+        vmOos.writeInt((int) System.currentTimeMillis());
+        vmOos.flush();
+        vmIs.read();
+        txTime = System.nanoTime() - txTime;
+
+        // sleep(7*1000);
+        // txBytes = NetworkProfiler.getProcessTxBytes() - txBytes;
+
+        // txTime = mObjInStream.readLong();
+
+        break;
+
+      default:
+        vmOs.write(RapidMessages.SEND_BYTES);
+        // sleep(3*1000);
+
+        // txBytes = NetworkProfiler.getProcessTxBytes();
+        txTime = System.nanoTime();
+        vmOos.writeObject(bytesToSend);
+        vmOos.flush();
+        vmIs.read();
+        txTime = System.nanoTime() - txTime;
+        // txBytes = NetworkProfiler.getProcessTxBytes() - txBytes;
+
+        // sleep(57*1000);
+        // txTime = mObjInStream.readLong();
+
+        break;
+    }
+
+    if (buffLogFile != null) {
+      buffLogFile.write(txTime + "\n");
+      buffLogFile.flush();
+    }
+
+    log.info("Sent " + nrBytesToSend + " bytes in " + txTime / 1000000000.0 + " seconds.");
+
+    return txBytes;
+  }
+
+  public long testReceiveBytes(int nrBytesToReceive, BufferedWriter buffLogFile)
+      throws IOException, ClassNotFoundException {
+
+    long rxBytes = -1;
+    long rxTime = -1;
+
+    switch (nrBytesToReceive) {
+      case 1:
+        vmOs.write(RapidMessages.PING);
+
+        // rxBytes = NetworkProfiler.getProcessRxBytes();
+        rxTime = System.nanoTime();
+        vmIs.read();
+        rxTime = System.nanoTime() - rxTime;
+        // rxBytes = NetworkProfiler.getProcessRxBytes() - rxBytes;
+        rxBytes = 1;
+        break;
+
+      case 4:
+        vmOs.write(RapidMessages.RECEIVE_INT);
+
+        // rxBytes = NetworkProfiler.getProcessRxBytes();
+        // rxTime = System.nanoTime();
+        vmOis.readInt();
+        vmOs.write(1);
+        vmOs.flush();
+        rxTime = vmOis.readLong();
+
+        // sleep(8*1000);
+        // rxTime = System.nanoTime() - rxTime;
+        // rxBytes = NetworkProfiler.getProcessRxBytes() - rxBytes;
+
+        break;
+
+      default:
+        vmOs.write(RapidMessages.RECEIVE_BYTES);
+        vmOos.writeInt(nrBytesToReceive);
+        vmOos.flush();
+
+        // rxBytes = NetworkProfiler.getProcessRxBytes();
+        // rxTime = System.nanoTime();
+        vmOis.readObject();
+        vmOos.write(1);
+        vmOos.flush();
+        rxTime = vmOis.readLong();
+
+        // sleep(8*1000);
+        // rxTime = System.nanoTime() - rxTime;
+        // rxBytes = NetworkProfiler.getProcessRxBytes() - rxBytes;
+
+        break;
+    }
+
+    if (buffLogFile != null) {
+      buffLogFile.write(rxTime + "\n");
+      buffLogFile.flush();
+    }
+
+    log.info("Received " + nrBytesToReceive + " bytes in " + rxTime / 1000000000.0 + " seconds.");
+
+    return rxBytes;
+  }
+
+  public String getRapidFolder() {
+    return config.getRapidFolder();
   }
 }
