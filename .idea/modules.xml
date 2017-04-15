@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="ProjectModuleManager">
+    <modules>
+      <module fileurl="file://$PROJECT_DIR$/AccelerationClient/AccelerationClient.iml" filepath="$PROJECT_DIR$/AccelerationClient/AccelerationClient.iml" />
+      <module fileurl="file://$PROJECT_DIR$/AccelerationServer/AccelerationServer.iml" filepath="$PROJECT_DIR$/AccelerationServer/AccelerationServer.iml" />
+      <module fileurl="file://$PROJECT_DIR$/DemoApp/rapid-demo-linux.iml" filepath="$PROJECT_DIR$/DemoApp/rapid-demo-linux.iml" />
+    </modules>
+  </component>
+</project>
