@@ -16,6 +16,9 @@
 			<attribute name="maven.pomderived" value="true"/>
 		</attributes>
 	</classpathentry>
+	<classpathentry kind="var" path="M2_REPO/org/apache/logging/log4j/log4j-core/2.5/log4j-core-2.5.jar"/>
+	<classpathentry kind="var" path="M2_REPO/org/apache/logging/log4j/log4j-api/2.5/log4j-api-2.5.jar" sourcepath="M2_REPO/org/apache/logging/log4j/log4j-api/2.5/log4j-api-2.5-sources.jar"/>
+	<classpathentry kind="var" path="M2_REPO/mysql/mysql-connector-java/5.1.38/mysql-connector-java-5.1.38.jar"/>
 	<classpathentry kind="con" path="org.eclipse.m2e.MAVEN2_CLASSPATH_CONTAINER">
 		<attributes>
 			<attribute name="maven.pomderived" value="true"/>

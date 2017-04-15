@@ -1,8 +1,8 @@
 <project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
 	xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
 	<modelVersion>4.0.0</modelVersion>
-	<groupId>eu.project.rapid.demo</groupId>
-	<artifactId>DemoApp</artifactId>
+	<groupId>eu.project.rapid</groupId>
+	<artifactId>rapid-demo-linux</artifactId>
 	<version>0.0.1-SNAPSHOT</version>
 	<name>DemoApp</name>
 	<description>This is a demo of the linux version of the rapid project</description>
@@ -32,7 +32,7 @@
 				</configuration>
 			</plugin>
 			<plugin>
-			<!-- This is to make the jar runnable -->
+				<!-- This is to make the jar runnable -->
 				<groupId>org.apache.maven.plugins</groupId>
 				<artifactId>maven-shade-plugin</artifactId>
 				<version>2.4.3</version>
@@ -43,9 +43,9 @@
 							<goal>shade</goal>
 						</goals>
 						<configuration>
-						<!-- Configuration needed to avoid the following error when trying to run the jar file:
-						"Exception in thread "main" java.lang.SecurityException:
-						 Invalid signature file digest for Manifest main attributes" -->
+							<!-- Configuration needed to avoid the following error when trying 
+								to run the jar file: "Exception in thread "main" java.lang.SecurityException: 
+								Invalid signature file digest for Manifest main attributes" -->
 							<filters>
 								<filter>
 									<artifact>*:*</artifact>
@@ -79,11 +79,16 @@
 			<artifactId>log4j-api</artifactId>
 			<version>2.5</version>
 		</dependency>
-		<dependency>
-			<groupId>eu.project.rapid.ac</groupId>
-			<artifactId>AccelerationClient</artifactId>
-			<version>0.0.1-SNAPSHOT</version>
+		<!-- <dependency>
+			<groupId>eu.project.rapid</groupId>
+			<artifactId>rapid-linux-ac</artifactId>
+			<version>0.1.1-SNAPSHOT</version>
 			<scope>compile</scope>
+		</dependency> -->
+		<dependency>
+			<groupId>eu.project.rapid</groupId>
+			<artifactId>rapid-linux-ac</artifactId>
+			<version>0.0.1</version>
 		</dependency>
 	</dependencies>
 </project>

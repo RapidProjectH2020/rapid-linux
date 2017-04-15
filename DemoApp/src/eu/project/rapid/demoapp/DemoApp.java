@@ -1,18 +1,17 @@
 package eu.project.rapid.demoapp;
 
+import eu.project.rapid.ac.DFE;
+import eu.project.rapid.common.RapidConstants.COMM_TYPE;
+import eu.project.rapid.common.RapidConstants.ExecLocation;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
 import java.io.BufferedWriter;
 import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Random;
-
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
-
-import eu.project.rapid.ac.DFE;
-import eu.project.rapid.common.RapidConstants.COMM_TYPE;
-import eu.project.rapid.common.RapidConstants.ExecLocation;
 
 public class DemoApp {
   private DFE dfe;
@@ -22,9 +21,9 @@ public class DemoApp {
 
   public DemoApp() {
 
-    dfe = DFE.getInstance();
-    // dfe = DFE.getInstance("127.0.0.1");
-    // dfe = DFE.getInstance("54.220.5.58");
+    // dfe = DFE.getInstance();
+    // dfe = DFE.getInstance("10.0.0.13");
+    dfe = DFE.getInstance("54.216.218.142");
     dfe.setUserChoice(ExecLocation.REMOTE);
 
     // log.info("Testing JNI...");
@@ -129,12 +128,12 @@ public class DemoApp {
     // for these sizes
     COMM_TYPE[] commTypes = {COMM_TYPE.CLEAR, COMM_TYPE.SSL};
     String[] stringCommTypes = {"CLEAR", "SSL"};
-    int[] nrTests = {200, 100, 10};
-    int[] bytesToSendSize = {4, 1024, 1024 * 1024};
-    String[] bytesSizeToSendString = {"4B", "1KB", "1MB"};
+    int[] nrTests = {200, 100, 20};
+    int[] bytesToSendSize = {4, 100 * 1024, 1024 * 1024};
+    String[] bytesSizeToSendString = {"4B", "100KB", "1MB"};
 
-    // int[] nrTests = {5};
-    // int[] bytesToSendSize = {1 * 1024 * 1024};
+    // int[] nrTests = {50};
+    // int[] bytesToSendSize = {1024 * 1024};
     // String[] bytesSizeToSendString = {"1MB"};
 
     ArrayList<byte[]> bytesToSend = new ArrayList<byte[]>();
@@ -230,9 +229,9 @@ public class DemoApp {
     // for these sizes
     COMM_TYPE[] commTypes = {COMM_TYPE.CLEAR, COMM_TYPE.SSL};
     String[] stringCommTypes = {"CLEAR", "SSL"};
-    int[] nrTests = {200, 100, 10};
-    int[] bytesToReceiveSize = {4, 1024, 1024 * 1024};
-    String[] bytesSizeToReceiveString = {"4B", "1KB", "1MB"};
+    int[] nrTests = {200, 100, 20};
+    int[] bytesToReceiveSize = {4, 100 * 1024, 1024 * 1024};
+    String[] bytesSizeToReceiveString = {"4B", "100KB", "1MB"};
 
     // int[] nrTests = {5};
     // int[] bytesToReceiveSize = {1 * 1024 * 1024};

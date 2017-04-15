@@ -8,6 +8,8 @@ import java.io.ObjectOutputStream;
 import java.net.InetAddress;
 import java.net.Socket;
 import java.net.UnknownHostException;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Random;
 
 import org.apache.logging.log4j.LogManager;
@@ -37,8 +39,7 @@ public class AccelerationServer {
   // When doing tests about send/receive data
   // To avoid creating the objects in the real deployment
   private static final boolean TESTING_UL_DL_RATE = true;
-  public static byte[] bytesToSend1K;
-  public static byte[] bytesToSend1M;
+  public static Map<Integer, byte[]> bytesToSend;
 
   // The ID of the user that is requesting this VM.
   private long userId = -1; // The userId will be given by the VMM
@@ -50,10 +51,14 @@ public class AccelerationServer {
     config = new Configuration(AccelerationServer.class.getSimpleName(), REGIME.AS);
 
     if (TESTING_UL_DL_RATE) {
-      bytesToSend1K = new byte[1024];
-      bytesToSend1M = new byte[1024 * 1024];
-      new Random().nextBytes(bytesToSend1K);
-      new Random().nextBytes(bytesToSend1M);
+      bytesToSend = new HashMap<>();
+      bytesToSend.put(1024, new byte[1024]);
+      bytesToSend.put(100 * 1024, new byte[100 * 1024]);
+      bytesToSend.put(1024 * 1024, new byte[1024 * 1024]);
+
+      new Random().nextBytes(bytesToSend.get(1024));
+      new Random().nextBytes(bytesToSend.get(100 * 1024));
+      new Random().nextBytes(bytesToSend.get(1024 * 1024));
     }
 
     if (config.getSlamIp() == null) {

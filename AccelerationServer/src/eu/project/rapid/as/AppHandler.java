@@ -180,8 +180,7 @@ public class AppHandler {
             // Used for measuring the costs of data receiving on the phone
             int size = dOis.readInt();
             s = System.nanoTime();
-            oos.writeObject(
-                size == 1024 ? AccelerationServer.bytesToSend1K : AccelerationServer.bytesToSend1M);
+            oos.writeObject(AccelerationServer.bytesToSend.get(size));
             oos.flush();
             is.read();
             s = System.nanoTime() - s;

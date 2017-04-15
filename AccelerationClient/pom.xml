@@ -1,9 +1,9 @@
 <project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
 	xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
 	<modelVersion>4.0.0</modelVersion>
-	<groupId>eu.project.rapid.ac</groupId>
-	<artifactId>AccelerationClient</artifactId>
-	<version>0.0.1-SNAPSHOT</version>
+	<groupId>eu.project.rapid</groupId>
+	<artifactId>rapid-linux-ac</artifactId>
+	<version>0.0.1</version>
 	<build>
 		<sourceDirectory>src</sourceDirectory>
 		<plugins>
@@ -17,6 +17,7 @@
 			</plugin>
 		</plugins>
 	</build>
+
 	<dependencies>
 		<dependency>
 			<groupId>org.apache.logging.log4j</groupId>
@@ -35,10 +36,24 @@
 			<artifactId>mysql-connector-java</artifactId>
 			<version>5.1.38</version> <!-- Version 6 gives error with timezone -->
 		</dependency>
+
+		<!-- bintray -->
 		<dependency>
-			<groupId>Rapid-Common</groupId>
-			<artifactId>Rapid-Common</artifactId>
-			<version>0.0.1-SNAPSHOT</version>
+			<groupId>eu.project.rapid</groupId>
+			<artifactId>rapid-common</artifactId>
+			<version>0.0.1</version>
 		</dependency>
 	</dependencies>
+
+	<distributionManagement>
+		<!-- <repository> <id>bintray-gjigandi-rapid</id> <name>gjigandi-rapid</name> 
+			<url>https://api.bintray.com/maven/gjigandi/rapid/rapid-linux-ac/;publish=1;override=1</url> 
+			</repository> -->
+		<repository>
+			<id>bintray-rapidprojecth2020-rapid</id>
+			<name>rapidprojecth2020-rapid</name>
+			<url>https://api.bintray.com/maven/rapidprojecth2020/rapid/rapid-linux-ac/;publish=1;override=1</url>
+		</repository>
+	</distributionManagement>
+
 </project>
