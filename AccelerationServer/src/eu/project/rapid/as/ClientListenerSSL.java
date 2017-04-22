@@ -1,23 +1,24 @@
 package eu.project.rapid.as;
 
-import java.io.IOException;
-import java.net.Socket;
-import java.security.KeyManagementException;
-import java.security.NoSuchAlgorithmException;
+import eu.project.rapid.utils.Configuration;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.SSLServerSocket;
 import javax.net.ssl.SSLServerSocketFactory;
-
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
-
-import eu.project.rapid.utils.Configuration;
+import java.io.IOException;
+import java.net.Socket;
+import java.security.KeyManagementException;
+import java.security.NoSuchAlgorithmException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 public class ClientListenerSSL implements Runnable {
 
   private static final Logger log = LogManager.getLogger(ClientListenerSSL.class.getSimpleName());
   private Configuration config;
+  private ExecutorService threadPool = Executors.newFixedThreadPool(10);
 
   public ClientListenerSSL(Configuration config) {
     this.config = config;
@@ -35,11 +36,10 @@ public class ClientListenerSSL implements Runnable {
       SSLContext sslContext = SSLContext.getInstance("SSL");
       sslContext.init(config.getKmf().getKeyManagers(), null, null);
 
-      SSLServerSocketFactory factory = (SSLServerSocketFactory) sslContext.getServerSocketFactory();
+      SSLServerSocketFactory factory = sslContext.getServerSocketFactory();
       log.info("factory created");
 
-      SSLServerSocket serverSocket =
-          (SSLServerSocket) factory.createServerSocket(config.getAsPortSsl());
+      SSLServerSocket serverSocket = (SSLServerSocket) factory.createServerSocket(config.getAsPortSsl());
       log.info("server socket created");
 
       // SSLContext sslContext = config.getSslContext();
@@ -53,9 +53,8 @@ public class ClientListenerSSL implements Runnable {
       while (true) {
         Socket clientSocket = serverSocket.accept();
         log.info("New client connected using SSL");
-        new AppHandler(clientSocket, config);
+        threadPool.execute(new AppHandler(clientSocket, config));
       }
-
     } catch (IOException | NoSuchAlgorithmException | KeyManagementException e) {
       log.error("Could not create SSL context: " + e);
       e.printStackTrace();

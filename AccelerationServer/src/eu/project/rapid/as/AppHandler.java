@@ -20,13 +20,7 @@ import java.util.*;
 import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
 
-// import org.bouncycastle.jce.provider.BouncyCastleProvider;
-
-public class AppHandler {
-    //
-    // static {
-    // Security.insertProviderAt(new BouncyCastleProvider(), 1);
-    // }
+public class AppHandler implements Runnable {
 
     private final Logger log = LogManager.getLogger(AppHandler.class.getSimpleName());
     private Configuration config;
@@ -64,12 +58,10 @@ public class AppHandler {
         if (classLoaders == null) {
             classLoaders = new HashMap<>();
         }
-
-        startListening();
-
     }
 
-    private void startListening() {
+    @Override
+    public void run() {
         try {
             is = clientSocket.getInputStream();
             os = clientSocket.getOutputStream();
