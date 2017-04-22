@@ -4,7 +4,6 @@ import eu.project.rapid.ac.profilers.NetworkProfiler;
 import eu.project.rapid.ac.profilers.Profiler;
 import eu.project.rapid.ac.rm.AC_RM;
 import eu.project.rapid.common.Clone;
-import eu.project.rapid.common.RapidConstants.COMM_TYPE;
 import eu.project.rapid.common.RapidConstants.ExecLocation;
 import eu.project.rapid.common.RapidConstants.REGIME;
 import eu.project.rapid.common.RapidMessages;
@@ -16,7 +15,6 @@ import eu.project.rapid.utils.Utils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
-import javax.net.ssl.SSLSocket;
 import java.io.*;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
@@ -185,7 +183,7 @@ public class DFE {
 
         try {
             // Creating Client Sockets
-            vmSocket = (SSLSocket) config.getSslFactory().createSocket(vm.getIp(), vm.getSslPort());
+            vmSocket = config.getSslFactory().createSocket(vm.getIp(), vm.getSslPort());
 
             // Initializing the streams for Communication with the Server
             vmOs = vmSocket.getOutputStream();
@@ -232,7 +230,7 @@ public class DFE {
             fis = new FileInputStream(jarFile);
             byte[] buffer = new byte[4096];
             int totalRead = 0;
-            int read = 0;
+            int read;
             while ((read = fis.read(buffer)) > -1) {
                 vmOs.write(buffer, 0, read);
                 totalRead += read;
@@ -279,7 +277,7 @@ public class DFE {
                  OutputStream os = socket.getOutputStream();
                  InputStream is = socket.getInputStream();
                  ObjectOutputStream oos = new ObjectOutputStream(os);
-                 ObjectInputStream ois = new ObjectInputStream(is);) {
+                 ObjectInputStream ois = new ObjectInputStream(is)) {
 
                 // Ask the AC_RM for the VM to connect to.
                 os.write(RapidMessages.AC_HELLO_AC_RM);
@@ -304,6 +302,7 @@ public class DFE {
                 try {
                     Thread.sleep(2 * 1000);
                 } catch (InterruptedException e1) {
+                    Thread.currentThread().interrupt();
                 }
             }
         }
@@ -355,6 +354,7 @@ public class DFE {
                         Thread.sleep(1000);
                         log.debug("Waiting for network profiling to finish...");
                     } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
                     }
                 }
                 log.debug("Network profiling finished.");
@@ -401,7 +401,7 @@ public class DFE {
 
         private InputStream is;
 
-        public StreamThread(InputStream stream) {
+        StreamThread(InputStream stream) {
             this.is = stream;
         }
 
@@ -468,7 +468,6 @@ public class DFE {
         return result;
 
     }
-
 
     /**
      * Execute the method locally
@@ -726,169 +725,6 @@ public class DFE {
     }
 
 
-    /**
-     * Used to measure the costs of connection with the clone when using different communication
-     * types.
-     *
-     * @param givenCommType CLEAR, SSL
-     * @param buffLogFile
-     * @throws IOException
-     */
-    public void testConnection(COMM_TYPE givenCommType, BufferedWriter buffLogFile)
-            throws IOException {
-
-        if (onLine) {
-            closeConnection();
-        }
-
-        long startTime = System.nanoTime();
-        if (givenCommType == COMM_TYPE.SSL) {
-            connectWitAsSsl();
-        } else {
-            connectWitAs();
-        }
-        long totalTime = System.nanoTime() - startTime;
-
-        if (buffLogFile != null) {
-            buffLogFile.write(totalTime + "\n");
-        }
-    }
-
-    /**
-     * Used to measure the costs of sending data of different size with different communication
-     * protocols.
-     *
-     * @param nrBytesToSend
-     * @param bytesToSend
-     * @param buffLogFile
-     * @return
-     * @throws IOException
-     */
-    public long testSendBytes(int nrBytesToSend, byte[] bytesToSend, BufferedWriter buffLogFile)
-            throws IOException {
-
-        long txTime = -1;
-        long txBytes = -1;
-
-        switch (nrBytesToSend) {
-            case 1:
-                // txBytes = NetworkProfiler.getProcessTxBytes();
-                txTime = System.nanoTime();
-                vmOs.write(RapidMessages.PING);
-                vmIs.read();
-                txTime = System.nanoTime() - txTime;
-                // txBytes = NetworkProfiler.getProcessTxBytes() - txBytes;
-                txBytes = 1;
-                break;
-
-            case 4:
-                vmOs.write(RapidMessages.SEND_INT);
-                // sleep(3*1000);
-
-                // txBytes = NetworkProfiler.getProcessTxBytes();
-                txTime = System.nanoTime();
-                vmOos.writeInt((int) System.currentTimeMillis());
-                vmOos.flush();
-                vmIs.read();
-                txTime = System.nanoTime() - txTime;
-
-                // sleep(7*1000);
-                // txBytes = NetworkProfiler.getProcessTxBytes() - txBytes;
-
-                // txTime = mObjInStream.readLong();
-
-                break;
-
-            default:
-                vmOs.write(RapidMessages.SEND_BYTES);
-                // sleep(3*1000);
-
-                // txBytes = NetworkProfiler.getProcessTxBytes();
-                txTime = System.nanoTime();
-                vmOos.writeObject(bytesToSend);
-                vmOos.flush();
-                vmIs.read();
-                txTime = System.nanoTime() - txTime;
-                // txBytes = NetworkProfiler.getProcessTxBytes() - txBytes;
-
-                // sleep(57*1000);
-                // txTime = mObjInStream.readLong();
-
-                break;
-        }
-
-        if (buffLogFile != null) {
-            buffLogFile.write(txTime + "\n");
-            buffLogFile.flush();
-        }
-
-        log.info("Sent " + nrBytesToSend + " bytes in " + txTime / 1000000000.0 + " seconds.");
-
-        return txBytes;
-    }
-
-    public long testReceiveBytes(int nrBytesToReceive, BufferedWriter buffLogFile)
-            throws IOException, ClassNotFoundException {
-
-        long rxBytes = -1;
-        long rxTime = -1;
-
-        switch (nrBytesToReceive) {
-            case 1:
-                vmOs.write(RapidMessages.PING);
-
-                // rxBytes = NetworkProfiler.getProcessRxBytes();
-                rxTime = System.nanoTime();
-                vmIs.read();
-                rxTime = System.nanoTime() - rxTime;
-                // rxBytes = NetworkProfiler.getProcessRxBytes() - rxBytes;
-                rxBytes = 1;
-                break;
-
-            case 4:
-                vmOs.write(RapidMessages.RECEIVE_INT);
-
-                // rxBytes = NetworkProfiler.getProcessRxBytes();
-                // rxTime = System.nanoTime();
-                vmOis.readInt();
-                vmOs.write(1);
-                vmOs.flush();
-                rxTime = vmOis.readLong();
-
-                // sleep(8*1000);
-                // rxTime = System.nanoTime() - rxTime;
-                // rxBytes = NetworkProfiler.getProcessRxBytes() - rxBytes;
-
-                break;
-
-            default:
-                vmOs.write(RapidMessages.RECEIVE_BYTES);
-                vmOos.writeInt(nrBytesToReceive);
-                vmOos.flush();
-
-                // rxBytes = NetworkProfiler.getProcessRxBytes();
-                // rxTime = System.nanoTime();
-                vmOis.readObject();
-                vmOos.write(1);
-                vmOos.flush();
-                rxTime = vmOis.readLong();
-
-                // sleep(8*1000);
-                // rxTime = System.nanoTime() - rxTime;
-                // rxBytes = NetworkProfiler.getProcessRxBytes() - rxBytes;
-
-                break;
-        }
-
-        if (buffLogFile != null) {
-            buffLogFile.write(rxTime + "\n");
-            buffLogFile.flush();
-        }
-
-        log.info("Received " + nrBytesToReceive + " bytes in " + rxTime / 1000000000.0 + " seconds.");
-
-        return rxBytes;
-    }
 
     public String getRapidFolder() {
         return config.getRapidFolder();
