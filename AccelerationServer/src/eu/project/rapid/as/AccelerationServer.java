@@ -1,26 +1,19 @@
 package eu.project.rapid.as;
 
-import java.io.File;
-import java.io.FileNotFoundException;
-import java.io.IOException;
-import java.io.ObjectInputStream;
-import java.io.ObjectOutputStream;
-import java.net.InetAddress;
-import java.net.Socket;
-import java.net.UnknownHostException;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.Random;
-
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
-// import org.bouncycastle.jce.provider.BouncyCastleProvider;
-
 import eu.project.rapid.common.RapidConstants.REGIME;
 import eu.project.rapid.common.RapidMessages;
 import eu.project.rapid.common.RapidUtils;
 import eu.project.rapid.utils.Configuration;
 import eu.project.rapid.utils.Utils;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
+import java.io.*;
+import java.net.InetAddress;
+import java.net.Socket;
+import java.net.UnknownHostException;
+
+// import org.bouncycastle.jce.provider.BouncyCastleProvider;
 
 /**
  * Implementation of the Acceleration Server (AS), which starts running automatically when the
@@ -36,30 +29,13 @@ public class AccelerationServer {
   private static final Logger log = LogManager.getLogger(AccelerationServer.class.getSimpleName());
   private Configuration config;
 
-  // When doing tests about send/receive data
-  // To avoid creating the objects in the real deployment
-  private static final boolean TESTING_UL_DL_RATE = true;
-  public static Map<Integer, byte[]> bytesToSend;
-
   // The ID of the user that is requesting this VM.
   private long userId = -1; // The userId will be given by the VMM
-  private int vmId = -1; // The vmId will be assigned by the DS
   private String vmIp; // The vmIp should be extracted by us
 
   public AccelerationServer() {
     log.info("Starting the AS ");
     config = new Configuration(AccelerationServer.class.getSimpleName(), REGIME.AS);
-
-    if (TESTING_UL_DL_RATE) {
-      bytesToSend = new HashMap<>();
-      bytesToSend.put(1024, new byte[1024]);
-      bytesToSend.put(100 * 1024, new byte[100 * 1024]);
-      bytesToSend.put(1024 * 1024, new byte[1024 * 1024]);
-
-      new Random().nextBytes(bytesToSend.get(1024));
-      new Random().nextBytes(bytesToSend.get(100 * 1024));
-      new Random().nextBytes(bytesToSend.get(1024 * 1024));
-    }
 
     if (config.getSlamIp() == null) {
       log.warn("The configuration file does not contain the SLAM IP.");
@@ -83,6 +59,7 @@ public class AccelerationServer {
     waitForNetworkToBeUp();
     vmIp = RapidUtils.getVmIpLinux();
     log.info("My IP: " + vmIp);
+    int vmId = -1;
     log.info("My ID: " + vmId);
     if (!registerWithVmmAndDs()) {
       quit("Error while registering, exiting...");
@@ -123,8 +100,9 @@ public class AccelerationServer {
           hostMachineReachable = hostMachineAddress.isReachable(1000);
           nrTimes++;
           try {
-            Thread.sleep(1 * 1000);
+            Thread.sleep(1000);
           } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
           }
         } catch (IOException e) {
           log.warn("Error while trying to ping the host machine: " + e);
@@ -147,7 +125,7 @@ public class AccelerationServer {
    * 1. Register to the VMM.<br>
    * 2. If the registration with the VMM was OK, register with the DS, otherwise quit.<br>
    * 
-   * @return
+   * @return true if registration with the VMM and the DS was successful
    */
   private boolean registerWithVmmAndDs() {
 
