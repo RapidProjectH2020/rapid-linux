@@ -127,6 +127,10 @@ public class DFE {
      * @return The only instance of the DFE
      */
     public static DFE getInstance() {
+        return getInstance(null);
+    }
+
+    public static DFE getInstance(String vmIp) {
         // local variable increases performance by 25 percent according to
         // Joshua Bloch "Effective Java, Second Edition", p. 283-284
         DFE result = instance;
@@ -135,24 +139,11 @@ public class DFE {
             synchronized (DFE.class) {
                 result = instance;
                 if (result == null) {
-                    instance = result = new DFE();
-                }
-            }
-        }
-
-        return result;
-    }
-
-    public static DFE getInstance(String vmIp) {
-        DFE result = instance;
-
-        if (result == null) {
-            synchronized (DFE.class) {
-                result = instance;
-                if (result == null) {
-                    Clone vm = new Clone("", vmIp);
-                    vm.setCryptoPossible(true);
-                    // vm.set
+                    Clone vm = null;
+                    if (vmIp != null) {
+                        vm = new Clone("", vmIp);
+                        vm.setCryptoPossible(true);
+                    }
                     instance = result = new DFE(vm);
                 }
             }
@@ -409,9 +400,9 @@ public class DFE {
         public void run() {
 
             try (InputStreamReader isr = new InputStreamReader(is);
-                 BufferedReader br = new BufferedReader(isr);) {
+                 BufferedReader br = new BufferedReader(isr)) {
 
-                String line = null;
+                String line;
                 while ((line = br.readLine()) != null)
                     System.out.println(line);
             } catch (IOException e) {
@@ -422,7 +413,7 @@ public class DFE {
     }
 
     public Object execute(Method m, Object o) {
-        return execute(m, (Object[]) null, o);
+        return execute(m, null, o);
     }
 
     /**
@@ -488,10 +479,9 @@ public class DFE {
         profiler.start();
 
         // Make sure that the method is accessible
-        Object result = null;
         long startTime = System.nanoTime();
         m.setAccessible(true);
-        result = m.invoke(o, pValues); // Access it
+        Object result = m.invoke(o, pValues); // Access it
         long pureLocalDuration = System.nanoTime() - startTime;
         log.info("LOCAL " + m.getName() + ": Actual Invocation duration - "
                 + pureLocalDuration / Constants.MEGA + "ms");
