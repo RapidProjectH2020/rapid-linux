@@ -489,7 +489,7 @@ public class DFE {
                         this.result = null;
 
                         log.info(TAG + "Got a task, executing...");
-                        runTask(task, os, ois, oos);
+                        runTask(os, ois, oos);
                         log.info(TAG + "Task finished execution, putting result on the resultMap...");
                         tasksResultsMap.get(task.id).put(this.result);
                         log.info(TAG + "Result inserted on the resultMap.");
@@ -511,7 +511,7 @@ public class DFE {
             return this.result;
         }
 
-        private void runTask(Task task, OutputStream os, ObjectInputStream ois, ObjectOutputStream oos) {
+        private void runTask(OutputStream os, ObjectInputStream ois, ObjectOutputStream oos) {
 
             ExecLocation execLocation = dse.findExecLocationDbCache(jarName, m.getName());
             if (execLocation.equals(ExecLocation.LOCAL)) {
