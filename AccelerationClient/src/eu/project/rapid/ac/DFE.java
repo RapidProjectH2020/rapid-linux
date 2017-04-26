@@ -65,10 +65,6 @@ public class DFE {
     private DFE(boolean serverSide) {
     }
 
-    private DFE() {
-        this(null);
-    }
-
     // Constructor to be used by the application.
     private DFE(Clone vm) {
         // To prevent instantiating the DFE calling this constructor by Reflection call
