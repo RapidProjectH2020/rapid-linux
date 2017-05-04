@@ -1,5 +1,12 @@
 package eu.project.rapid.ac.profilers;
 
+import eu.project.rapid.common.RapidMessages;
+import eu.project.rapid.common.RapidUtils;
+import eu.project.rapid.utils.Configuration;
+import eu.project.rapid.utils.Constants;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
 import java.io.DataInputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -11,14 +18,6 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
-
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
-
-import eu.project.rapid.common.RapidMessages;
-import eu.project.rapid.common.RapidUtils;
-import eu.project.rapid.utils.Configuration;
-import eu.project.rapid.utils.Constants;
 
 public class NetworkProfiler {
 
@@ -195,7 +194,7 @@ public class NetworkProfiler {
   /**
    * Keep receiving data from the NetworkProfilerServer for 3 seconds.<br>
    * After the 3 second timeout, close the sockets to cause an Exception and force the InputStream
-   * to stop listening. Use the measured values to estimate the download bandwidth.
+   * to stopAndSave listening. Use the measured values to estimate the download bandwidth.
    */
   public static void measureDlRate() {
 

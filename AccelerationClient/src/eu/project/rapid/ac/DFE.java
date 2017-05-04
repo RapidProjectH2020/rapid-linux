@@ -67,10 +67,10 @@ public class DFE {
     private long prepareDataDuration = -1;
 
     private static boolean isDFEActive = false;
-    private static ExecutorService threadPool = Executors.newFixedThreadPool(10);
-    private static BlockingDeque<Task> tasks = new LinkedBlockingDeque<>();
-    private static AtomicInteger taskId = new AtomicInteger();
-    private static Map<Integer, BlockingDeque<Object>> tasksResultsMap = new HashMap<>();
+    private static ExecutorService threadPool;
+    private static BlockingDeque<Task> tasks;
+    private static AtomicInteger taskId;
+    private static Map<Integer, BlockingDeque<Object>> tasksResultsMap;
 
     // Constructor to be used by the AS
     private DFE(boolean serverSide) {
@@ -85,6 +85,10 @@ public class DFE {
 
         config = new Configuration(DFE.class.getSimpleName(), REGIME.AC);
         dse = new DSE(config);
+        threadPool = Executors.newFixedThreadPool(10);
+        tasks = new LinkedBlockingDeque<>();
+        taskId = new AtomicInteger();
+        tasksResultsMap = new HashMap<>();
 
         // Create the folder where the client apps will keep their data.
         try {
@@ -455,19 +459,15 @@ public class DFE {
         }
     }
 
-    private class TaskRunner implements Callable<Object> {
+    private class TaskRunner implements Runnable {
         private final String TAG;
-        Method m;
-        Object[] pValues;
-        Object o;
-        Object result;
 
         public TaskRunner(int id) {
             TAG = "DFE-TaskRunner-" + id;
         }
 
         @Override
-        public Object call() {
+        public void run() {
             try (Socket s = new Socket(vm.getIp(), vm.getPort());
                  OutputStream os = s.getOutputStream();
                  InputStream is = s.getInputStream();
@@ -483,15 +483,11 @@ public class DFE {
                     try {
                         log.info(TAG + "Waiting for task...");
                         Task task = tasks.take();
-                        this.m = task.m;
-                        this.pValues = task.pValues;
-                        this.o = task.o;
-                        this.result = null;
 
                         log.info(TAG + "Got a task, executing...");
-                        runTask(os, ois, oos);
+                        Object result = runTask(task, os, ois, oos);
                         log.info(TAG + "Task finished execution, putting result on the resultMap...");
-                        tasksResultsMap.get(task.id).put(this.result);
+                        tasksResultsMap.get(task.id).put(result);
                         log.info(TAG + "Result inserted on the resultMap.");
                     } catch (InterruptedException e) {
                         if (!isDFEActive) {
@@ -507,63 +503,57 @@ public class DFE {
             } catch (IOException e) {
                 log.error(TAG + "IOException while connecting: " + e);
             }
-
-            return this.result;
         }
 
-        private void runTask(OutputStream os, ObjectInputStream ois, ObjectOutputStream oos) {
+        private Object runTask(Task task, OutputStream os, ObjectInputStream ois, ObjectOutputStream oos) {
 
-            ExecLocation execLocation = dse.findExecLocationDbCache(jarName, m.getName());
+            ExecLocation execLocation = dse.findExecLocationDbCache(jarName, task.m.getName());
             if (execLocation.equals(ExecLocation.LOCAL)) {
-                try {
-                    log.info(TAG + "Should run the method locally...");
-                    this.result = executeLocally(m, pValues, o);
-                } catch (IllegalArgumentException | IllegalAccessException | InvocationTargetException e) {
-                    log.error(TAG + "Error while running the method locally: " + e);
-                }
+                log.info(TAG + "Should run the method locally...");
+                return executeLocally(task);
             } else if (execLocation.equals(ExecLocation.REMOTE)) {
                 try {
-                    this.result = executeRemotely(m, pValues, o, os, ois, oos);
-                    if (this.result instanceof InvocationTargetException) {
+                    Object result = executeRemotely(task, os, ois, oos);
+                    if (result instanceof InvocationTargetException) {
                         // The remote execution throwed an exception, try to run the method locally.
                         log.error(TAG + "The result was InvocationTargetException. Running the method locally...");
-                        this.result = executeLocally(m, pValues, o);
+                        return executeLocally(task);
                     }
-                } catch (IllegalArgumentException | SecurityException | IllegalAccessException
-                        | InvocationTargetException | ClassNotFoundException | NoSuchMethodException e) {
+                } catch (IllegalArgumentException | SecurityException e) {
                     log.error(TAG + "Error while trying to run the method remotely: " + e);
                 }
             }
+            return null;
         }
 
         /**
          * Execute the method locally
          *
-         * @param m
-         * @param pValues
-         * @param o
          * @return
          * @throws IllegalArgumentException
          * @throws IllegalAccessException
          * @throws InvocationTargetException
          */
-        private Object executeLocally(Method m, Object[] pValues, Object o)
-                throws IllegalArgumentException, IllegalAccessException, InvocationTargetException {
-
+        private Object executeLocally(Task task) {
             // Start tracking execution statistics for the method
-            Profiler profiler = new Profiler(jarName, m.getName(), ExecLocation.LOCAL, config);
+            Profiler profiler = new Profiler(jarName, task.m.getName(), ExecLocation.LOCAL, config);
             profiler.start();
 
-            // Make sure that the method is accessible
-            long startTime = System.nanoTime();
-            m.setAccessible(true);
-            Object result = m.invoke(o, pValues); // Access it
-            long pureLocalDuration = System.nanoTime() - startTime;
-            log.info("LOCAL " + m.getName() + ": Actual Invocation duration - "
-                    + pureLocalDuration / Constants.MEGA + "ms");
+            Object result = null; // Access it
+            try {
+                // Make sure that the method is accessible
+                long startTime = System.nanoTime();
+                task.m.setAccessible(true);
+                result = task.m.invoke(task.o, task.pValues);
+                long pureLocalDuration = System.nanoTime() - startTime;
+                log.info("LOCAL " + task.m.getName() + ": Actual Invocation duration - " + pureLocalDuration / Constants.MEGA + "ms");
 
-            // Collect execution statistics
-            profiler.stop(pureLocalDuration);
+                // Collect execution statistics
+                profiler.stopAndSave(pureLocalDuration);
+            } catch (IllegalAccessException | InvocationTargetException | IllegalArgumentException e) {
+                log.error("LOCAL execution failed: " + e);
+                profiler.stopAndDiscard();
+            }
 
             return result;
         }
@@ -571,9 +561,6 @@ public class DFE {
         /**
          * Execute method remotely
          *
-         * @param m
-         * @param pValues
-         * @param o
          * @return
          * @throws IllegalArgumentException
          * @throws IllegalAccessException
@@ -583,45 +570,44 @@ public class DFE {
          * @throws SecurityException
          * @throws IOException
          */
-        private Object executeRemotely(Method m, Object[] pValues, Object o,
-                                       OutputStream os, ObjectInputStream ois, ObjectOutputStream oos)
-                throws IllegalArgumentException, IllegalAccessException, InvocationTargetException,
-                SecurityException, ClassNotFoundException, NoSuchMethodException {
+        private Object executeRemotely(Task task, OutputStream os, ObjectInputStream ois, ObjectOutputStream oos) {
 
-            Object result = null;
             try {
-                Method prepareDataMethod = o.getClass().getDeclaredMethod("prepareDataOnClient");
+                Method prepareDataMethod = task.o.getClass().getDeclaredMethod("prepareDataOnClient");
                 prepareDataMethod.setAccessible(true);
                 // RapidUtils.sendAnimationMsg(config, RapidMessages.AC_PREPARE_DATA);
                 long s = System.nanoTime();
-                prepareDataMethod.invoke(o);
+                prepareDataMethod.invoke(task.o);
                 prepareDataDuration = System.nanoTime() - s;
 
             } catch (NoSuchMethodException e) {
                 log.warn("The method prepareDataOnClient() does not exist");
+            } catch (IllegalAccessException | InvocationTargetException e) {
+                log.warn("Exception calling the prepareDataOnClient() method: " + e);
             }
 
             // Start tracking execution statistics for the method
-            Profiler profiler = new Profiler(jarName, m.getName(), ExecLocation.REMOTE, config);
+            Profiler profiler = new Profiler(jarName, task.m.getName(), ExecLocation.REMOTE, config);
             profiler.start();
 
-            // try {
+            Object result;
             long startTime = System.nanoTime();
             try {
                 oos.write(RapidMessages.AC_OFFLOAD_REQ_AS);
-                ResultContainer resultContainer = sendAndExecute(m, pValues, o, ois, oos);
+                ResultContainer resultContainer = sendAndExecute(task, ois, oos);
                 result = resultContainer.functionResult;
 
                 long remoteDuration = System.nanoTime() - startTime;
-                log.info("REMOTE " + m.getName() + ": Actual Send-Receive duration - "
+                log.info("REMOTE " + task.m.getName() + ": Actual Send-Receive duration - "
                         + remoteDuration / Constants.MEGA + "ms");
                 // Collect execution statistics
-                profiler.stop(prepareDataDuration, resultContainer.pureExecutionDuration);
+                profiler.stopAndSave(prepareDataDuration, resultContainer.pureExecutionDuration);
             } catch (Exception e) {
                 // No such host exists, execute locally
-                log.error("REMOTE ERROR: " + m.getName() + ": " + e);
+                log.error("REMOTE ERROR: " + task.m.getName() + ": " + e);
                 e.printStackTrace();
-                result = executeLocally(m, pValues, o);
+                profiler.stopAndDiscard();
+                result = executeLocally(task);
             }
 
             return result;
@@ -631,9 +617,6 @@ public class DFE {
          * Send the object, the method to be executed and parameter values to the remote server for
          * execution.
          *
-         * @param m       method to be executed
-         * @param pValues parameter values of the remoted method
-         * @param o       the remoted object
          * @return result of the remoted method or an exception that occurs during execution
          * @throws IOException
          * @throws ClassNotFoundException
@@ -643,13 +626,13 @@ public class DFE {
          * @throws SecurityException
          * @throws IllegalArgumentException
          */
-        private ResultContainer sendAndExecute(Method m, Object[] pValues, Object o,
+        private ResultContainer sendAndExecute(Task task,
                                                ObjectInputStream ois, ObjectOutputStream oos)
                 throws IOException, ClassNotFoundException, IllegalArgumentException, SecurityException,
                 IllegalAccessException, InvocationTargetException, NoSuchMethodException {
 
             // Send the object itself
-            sendObject(o, m, pValues, oos);
+            sendObject(task, oos);
 
             // Read the results from the server
             log.info("Read Result");
@@ -668,7 +651,7 @@ public class DFE {
             try {
                 // Use the copyState method that must be defined for all Remoteable
                 // classes to copy the state of relevant fields to the local object
-                o.getClass().getMethod("copyState", pTypes).invoke(o, container.objState);
+                task.o.getClass().getMethod("copyState", pTypes).invoke(task.o, container.objState);
             } catch (NullPointerException e) {
                 // Do nothing - exception happened remotely and hence there is
                 // no object state returned.
@@ -692,12 +675,9 @@ public class DFE {
         /**
          * Send the object (along with method and parameters) to the remote server for execution
          *
-         * @param o
-         * @param m
-         * @param pValues
          * @throws IOException
          */
-        private void sendObject(Object o, Method m, Object[] pValues, ObjectOutputStream oos) throws IOException {
+        private void sendObject(Task task, ObjectOutputStream oos) throws IOException {
             oos.reset();
             log.info("Write Object and data");
 
@@ -706,17 +686,17 @@ public class DFE {
             oos.writeInt(nrVMs);
 
             // Send object for execution
-            oos.writeObject(o);
+            oos.writeObject(task.o);
 
             // Send the method to be executed
             // log.info("Write Method - " + m.getName());
-            oos.writeObject(m.getName());
+            oos.writeObject(task.m.getName());
 
             // log.info("Write method parameter types");
-            oos.writeObject(m.getParameterTypes());
+            oos.writeObject(task.m.getParameterTypes());
 
             // log.info("Write method parameter values");
-            oos.writeObject(pValues);
+            oos.writeObject(task.pValues);
             oos.flush();
 
             // totalTxBytesObject = NetworkProfiler.getProcessTxBytes() - startTx;
