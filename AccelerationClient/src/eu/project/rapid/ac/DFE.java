@@ -8,7 +8,6 @@ import eu.project.rapid.common.RapidConstants.ExecLocation;
 import eu.project.rapid.common.RapidConstants.REGIME;
 import eu.project.rapid.common.RapidMessages;
 import eu.project.rapid.common.RapidUtils;
-import eu.project.rapid.gvirtusfe.Frontend;
 import eu.project.rapid.utils.Configuration;
 import eu.project.rapid.utils.Constants;
 import eu.project.rapid.utils.Utils;
@@ -48,9 +47,6 @@ public class DFE {
     // Design and Space Explorer is responsible for deciding where to execute the method.
     private DSE dse;
     private ExecLocation userChoice = ExecLocation.DYNAMIC;
-
-    // GVirtuS frontend is responsible for running the CUDA code.
-    private Frontend gVirtusFrontend;
 
     // Variables related to the app using the DFE
     private String jarFilePath;
@@ -352,11 +348,6 @@ public class DFE {
                     threadPool.submit(new TaskRunner(i));
                 }
             }
-
-            // if (config.getGvirtusIp() != null) {
-            // // Create a gvirtus frontend object that is responsible for executing the CUDA code.
-            // gVirtusFrontend = new Frontend(config.getGvirtusIp(), config.getGvirtusPort());
-            // }
         }
     }
 
@@ -720,20 +711,6 @@ public class DFE {
      */
     public void setConfig(Configuration config) {
         this.config = config;
-    }
-
-    /**
-     * @return the gvirtusFrontend
-     */
-    public Frontend getGvirtusFrontend() {
-        return gVirtusFrontend;
-    }
-
-    /**
-     * @param gvirtusFrontend the gvirtusFrontend to set
-     */
-    public void setGvirtusFrontend(Frontend gvirtusFrontend) {
-        this.gVirtusFrontend = gvirtusFrontend;
     }
 
     /**

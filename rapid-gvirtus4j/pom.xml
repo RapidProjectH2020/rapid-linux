@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+
+    <modelVersion>4.0.0</modelVersion>
+    <groupId>eu.project.rapid</groupId>
+    <artifactId>rapid-gvirtus4j</artifactId>
+    <packaging>jar</packaging>
+    <version>0.0.1</version>
+    <build>
+        <sourceDirectory>src</sourceDirectory>
+        <plugins>
+            <plugin>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <version>3.3</version>
+                <configuration>
+                    <source>1.8</source>
+                    <target>1.8</target>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+
+
+    <distributionManagement>
+        <repository>
+            <id>bintray-rapidprojecth2020-rapid</id>
+            <name>rapidprojecth2020-rapid</name>
+            <url>https://api.bintray.com/maven/rapidprojecth2020/rapid/rapid-gvirtus4j/;publish=1;override=1</url>
+        </repository>
+    </distributionManagement>
+
+</project>

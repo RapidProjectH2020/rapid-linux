@@ -4,6 +4,7 @@
     <modules>
       <module fileurl="file://$PROJECT_DIR$/AccelerationClient/AccelerationClient.iml" filepath="$PROJECT_DIR$/AccelerationClient/AccelerationClient.iml" />
       <module fileurl="file://$PROJECT_DIR$/AccelerationServer/AccelerationServer.iml" filepath="$PROJECT_DIR$/AccelerationServer/AccelerationServer.iml" />
+      <module fileurl="file://$PROJECT_DIR$/rapid-gvirtus4j/rapid-gvirtus4j.iml" filepath="$PROJECT_DIR$/rapid-gvirtus4j/rapid-gvirtus4j.iml" />
     </modules>
   </component>
 </project>

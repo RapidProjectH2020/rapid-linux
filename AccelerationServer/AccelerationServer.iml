@@ -20,7 +20,7 @@
     <orderEntry type="library" name="org.eclipse.m2e.MAVEN2_CLASSPATH_CONTAINER" level="application" />
     <orderEntry type="library" name="Maven: org.apache.logging.log4j:log4j-core:2.5" level="project" />
     <orderEntry type="library" name="Maven: org.apache.logging.log4j:log4j-api:2.5" level="project" />
-    <orderEntry type="module" module-name="AccelerationClient" />
+    <orderEntry type="library" name="Maven: eu.project.rapid:rapid-linux-ac:0.0.1" level="project" />
     <orderEntry type="library" name="Maven: mysql:mysql-connector-java:5.1.38" level="project" />
     <orderEntry type="library" name="Maven: eu.project.rapid:rapid-common:0.0.1" level="project" />
   </component>

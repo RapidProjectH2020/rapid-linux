@@ -5,15 +5,11 @@
       <list>
         <option value="$PROJECT_DIR$/AccelerationServer/pom.xml" />
         <option value="$PROJECT_DIR$/AccelerationClient/pom.xml" />
+        <option value="$PROJECT_DIR$/rapid-gvirtus4j/pom.xml" />
       </list>
     </option>
-    <option name="ignoredFiles">
-      <set>
-        <option value="$PROJECT_DIR$/rapid-gvirtus4j/pom.xml" />
-      </set>
-    </option>
   </component>
-  <component name="ProjectRootManager" version="2" languageLevel="JDK_1_6" project-jdk-name="1.8" project-jdk-type="JavaSDK">
+  <component name="ProjectRootManager" version="2" languageLevel="JDK_1_7" default="false" project-jdk-name="1.8" project-jdk-type="JavaSDK">
     <output url="file://$PROJECT_DIR$/out" />
   </component>
 </project>
