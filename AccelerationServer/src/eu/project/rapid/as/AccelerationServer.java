@@ -12,7 +12,6 @@ import java.io.*;
 import java.net.InetAddress;
 import java.net.Socket;
 import java.net.UnknownHostException;
-import java.util.Scanner;
 
 // import org.bouncycastle.jce.provider.BouncyCastleProvider;
 
@@ -63,13 +62,7 @@ public class AccelerationServer {
         int vmId = -1;
         log.info("My ID: " + vmId);
         if (!registerWithVmmAndDs()) {
-            Scanner in = new Scanner(System.in);
-            log.warn("Couldn't register properly with the VMM and/or the DS.\nDo you want to continue anyway?" +
-                    "\nType 'n' to exit, anything else to continue: ");
-            String choice = in.nextLine().trim();
-            if (choice.equals("n")) {
-                quit("Error while registering, exiting...");
-            }
+            log.warn("Couldn't register properly with the VMM and/or the DS.\nContinue anyway...");
         }
 
         // Start the thread that listens for network connectivity measurements

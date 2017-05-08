@@ -17,6 +17,8 @@ import java.net.Socket;
 import java.nio.file.Files;
 import java.nio.file.StandardCopyOption;
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CountDownLatch;
 import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
 
@@ -39,12 +41,15 @@ public class AppHandler implements Runnable {
     private File appLibFolder;
     private String jarFilePath; // the path where the jar file is stored
 
+    private static Map<String, Integer> apkMap = new ConcurrentHashMap<>(); // appName, apkSize
+    private static Map<String, CountDownLatch> apkMapSemaphore = new ConcurrentHashMap<>(); // appName, latch
+
     private LinkedList<File> libraries;
     private LinkedList<File> librariesSorted; // Sorted in dependency order
     private Set<String> libNames;
     private SharedLibDependencyGraph dependencies;
 
-    private static Map<String, RapidClassLoader> classLoaders;
+    private Map<String, RapidClassLoader> classLoaders;
 
     public AppHandler(Socket socket, Configuration config) {
 
@@ -84,15 +89,22 @@ public class AppHandler implements Runnable {
 
                         appFolderPath = this.config.getRapidFolder() + File.separator + jarName;
                         jarFilePath = appFolderPath + File.separator + jarName + ".jar";
-                        if (!appExists()) {
+                        if (appExists()) {
+                            log.info("Jar file already present");
+                            os.write(RapidMessages.AS_APP_PRESENT_AC);
+                        } else {
                             log.info("Jar file not present or old version, should read the jar file");
                             os.write(RapidMessages.AS_APP_REQ_AC);
                             receiveJarFile();
-                        } else {
-                            log.info("Jar file already present");
-                            os.write(RapidMessages.AS_APP_PRESENT_AC);
+                            apkMapSemaphore.get(jarName).countDown();
                         }
 
+                        // Wait for the file to be written on the disk
+                        try {
+                            apkMapSemaphore.get(jarName).await();
+                        } catch (InterruptedException e) {
+                            Thread.currentThread().interrupt();
+                        }
                         RapidClassLoader rapidClassLoader = classLoaders.get(jarName);
                         if (rapidClassLoader == null) {
                             rapidClassLoader = new RapidClassLoader(appFolderPath);
@@ -467,10 +479,23 @@ public class AppHandler implements Runnable {
     /**
      * @return true if the jar file already exists in the AS.
      */
-    private boolean appExists() {
+    private synchronized boolean appExists() {
         log.info("Checking if the jar file '" + jarFilePath + "' with size " + jarLength + " exists");
         File jarFile = new File(jarFilePath);
-        return jarFile.exists() && jarFile.length() == jarLength;
+
+        if (jarFile.exists() && jarFile.length() == jarLength) {
+            apkMapSemaphore.put(jarName, new CountDownLatch(0));
+            return true;
+        }
+
+        if (apkMap.get(jarName) == null || apkMap.get(jarName) != jarLength) {
+            apkMap.put(jarName, (int) jarLength);
+            apkMapSemaphore.put(jarName, new CountDownLatch(1));
+            return false;
+        }
+
+        return true;
+//        return jarFile.exists() && jarFile.length() == jarLength;
     }
 
     /**
@@ -558,7 +583,7 @@ public class AppHandler implements Runnable {
         ClassLoader dOisLoader = dOis.getClassLoader();
 
         // ClassLoader[] loaders = new ClassLoader[] {appLoader, currentLoader, objLoader};
-        ClassLoader[] loaders = new ClassLoader[]{objLoader};
+        ClassLoader[] loaders = new ClassLoader[]{appLoader};
         final String[] libraries = ClassScope.getLoadedLibraries(loaders);
         for (String library : libraries) {
             System.out.println(library);

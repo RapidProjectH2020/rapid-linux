@@ -84,7 +84,6 @@ public class DFE {
         }
 
         config = new Configuration(DFE.class.getSimpleName(), REGIME.AC);
-        dse = new DSE(config);
         threadPool = Executors.newFixedThreadPool(nrTaskRunners);
 
         // Create the folder where the client apps will keep their data.
@@ -96,6 +95,7 @@ public class DFE {
 
         // Get the jar file to send to the AS.
         createJarFile();
+        dse = DSE.getInstance(jarName);
 
         // If vm != null it means that we are performing some tests with a predefined VM.
         if (vm == null) {
@@ -369,7 +369,7 @@ public class DFE {
             // Start threads to read the streams of the new process.
             // These threads will keep this app in the running state, even if the app has finished
             // processing.
-            // Disable this on release version.
+            // FIXME: Disable this on release version.
             new StreamThread(runAcRm.getInputStream()).start();
             new StreamThread(runAcRm.getErrorStream()).start();
 
@@ -754,5 +754,14 @@ public class DFE {
 
     public String getRapidFolder() {
         return config.getRapidFolder();
+    }
+
+
+    public String getLastExecLocation(String appName, String methodName) {
+        return dse.getLastExecLocation(appName, methodName);
+    }
+
+    public long getLastExecDuration(String appName, String methodName) {
+        return dse.getLastExecDuration(appName, methodName);
     }
 }
