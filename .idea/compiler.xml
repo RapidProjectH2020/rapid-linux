@@ -6,7 +6,6 @@
         <sourceOutputDir name="target/generated-sources/annotations" />
         <sourceTestOutputDir name="target/generated-test-sources/test-annotations" />
         <outputRelativeToContentRoot value="true" />
-        <module name="AccelerationClient" />
         <module name="AccelerationServer" />
       </profile>
     </annotationProcessing>
@@ -14,6 +13,7 @@
       <module name="AccelerationClient" target="1.8" />
       <module name="AccelerationServer" target="1.8" />
       <module name="rapid-demo-linux" target="1.8" />
+      <module name="rapid-gvirtus4j" target="1.8" />
     </bytecodeTargetLevel>
   </component>
 </project>

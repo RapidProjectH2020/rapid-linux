@@ -24,7 +24,10 @@ import java.net.UnknownHostException;
 import java.security.CodeSource;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.concurrent.*;
+import java.util.concurrent.BlockingDeque;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.LinkedBlockingDeque;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
@@ -67,10 +70,11 @@ public class DFE {
     private long prepareDataDuration = -1;
 
     private static boolean isDFEActive = false;
+    private static final int nrTaskRunners = 1;
     private static ExecutorService threadPool;
-    private static BlockingDeque<Task> tasks;
-    private static AtomicInteger taskId;
-    private static Map<Integer, BlockingDeque<Object>> tasksResultsMap;
+    private static BlockingDeque<Task> tasks = new LinkedBlockingDeque<>();
+    private static AtomicInteger taskId = new AtomicInteger();
+    private static Map<Integer, BlockingDeque<Object>> tasksResultsMap = new HashMap<>();
 
     // Constructor to be used by the AS
     private DFE(boolean serverSide) {
@@ -85,10 +89,7 @@ public class DFE {
 
         config = new Configuration(DFE.class.getSimpleName(), REGIME.AC);
         dse = new DSE(config);
-        threadPool = Executors.newFixedThreadPool(10);
-        tasks = new LinkedBlockingDeque<>();
-        taskId = new AtomicInteger();
-        tasksResultsMap = new HashMap<>();
+        threadPool = Executors.newFixedThreadPool(nrTaskRunners);
 
         // Create the folder where the client apps will keep their data.
         try {
@@ -320,14 +321,7 @@ public class DFE {
             if (onLine) {
                 log.info("Connected to VM");
 
-                if (config.getGvirtusIp() == null) {
-                    // If gvirtusIp is null, then gvirtus backend is running on the physical machine where
-                    // the VM is running.
-                    // Try to find a way here to get the ip address of the physical machine.
-                    // config.setGvirtusIp(TODO: ip address of the physical machine where the VM is running);
-                }
-
-                // FIXME uncomment this (if is commented), commented just to perform quick tests.
+                // FIXME uncomment this (if it's commented). Commented just to perform quick tests.
                 NetworkProfiler.startNetworkMonitoring(config);
 
                 // Start waiting for the network profiling to be finished.
@@ -354,7 +348,7 @@ public class DFE {
                 registerWithAs(vmIs, vmOs, vmOos);
 
                 // Start 10 TaskRunner threads that will handle the task dispatching process.
-                for (int i = 0; i < 10; i++) {
+                for (int i = 0; i < nrTaskRunners; i++) {
                     threadPool.submit(new TaskRunner(i));
                 }
             }
@@ -436,7 +430,8 @@ public class DFE {
             tasks.put(new Task(id, m, pValues, o));
             log.info("Task added");
 
-            log.info("Waiting for the result of this task to be inserted in the queue by the working thread...");
+            log.info("Waiting for the result of the task with id=" + id +
+                    " to be inserted in the queue by the working thread...");
             result = tasksResultsMap.get(id).take();
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
@@ -462,8 +457,8 @@ public class DFE {
     private class TaskRunner implements Runnable {
         private final String TAG;
 
-        public TaskRunner(int id) {
-            TAG = "DFE-TaskRunner-" + id;
+        TaskRunner(int id) {
+            TAG = "DFE-TaskRunner-" + id + " ";
         }
 
         @Override
@@ -486,8 +481,9 @@ public class DFE {
 
                         log.info(TAG + "Got a task, executing...");
                         Object result = runTask(task, os, ois, oos);
-                        log.info(TAG + "Task finished execution, putting result on the resultMap...");
-                        tasksResultsMap.get(task.id).put(result);
+                        log.info(TAG + "Task with id=" + task.id +
+                                " finished execution, putting result on the resultMap...");
+                        tasksResultsMap.get(task.id).put(result != null ? result : new Object());
                         log.info(TAG + "Result inserted on the resultMap.");
                     } catch (InterruptedException e) {
                         if (!isDFEActive) {
@@ -506,24 +502,25 @@ public class DFE {
         }
 
         private Object runTask(Task task, OutputStream os, ObjectInputStream ois, ObjectOutputStream oos) {
+            Object result = null;
 
             ExecLocation execLocation = dse.findExecLocationDbCache(jarName, task.m.getName());
             if (execLocation.equals(ExecLocation.LOCAL)) {
                 log.info(TAG + "Should run the method locally...");
-                return executeLocally(task);
+                result = executeLocally(task);
             } else if (execLocation.equals(ExecLocation.REMOTE)) {
                 try {
-                    Object result = executeRemotely(task, os, ois, oos);
+                    result = executeRemotely(task, os, ois, oos);
                     if (result instanceof InvocationTargetException) {
                         // The remote execution throwed an exception, try to run the method locally.
                         log.error(TAG + "The result was InvocationTargetException. Running the method locally...");
-                        return executeLocally(task);
+                        result = executeLocally(task);
                     }
                 } catch (IllegalArgumentException | SecurityException e) {
                     log.error(TAG + "Error while trying to run the method remotely: " + e);
                 }
             }
-            return null;
+            return result;
         }
 
         /**
@@ -771,7 +768,7 @@ public class DFE {
                 break;
 
             default:
-                log.error("Wrong user choice: " + userChoice + ". Defaulting to " + ExecLocation.DYNAMIC);
+                log.error("Bad user choice: " + userChoice + ". Defaulting to " + ExecLocation.DYNAMIC);
                 this.setUserChoice(ExecLocation.DYNAMIC);
                 break;
         }

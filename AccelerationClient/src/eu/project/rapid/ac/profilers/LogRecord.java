@@ -1,18 +1,17 @@
 package eu.project.rapid.ac.profilers;
 
+import eu.project.rapid.ac.db.DB;
+import eu.project.rapid.ac.db.DBCache;
+import eu.project.rapid.ac.db.DBEntry;
+import eu.project.rapid.utils.Configuration;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
 import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
-
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
-
-import eu.project.rapid.ac.db.DB;
-import eu.project.rapid.ac.db.DBCache;
-import eu.project.rapid.ac.db.DBEntry;
-import eu.project.rapid.utils.Configuration;
 
 public class LogRecord {
   private String logFilePath;
@@ -70,7 +69,7 @@ public class LogRecord {
   /**
    * Save these measurements on a log file and on the DB
    */
-  public void save() {
+  void save() {
     logRecordTime = System.currentTimeMillis();
     log.info(this.toString());
     saveToFile();

@@ -35,7 +35,6 @@ public class NetworkProfiler {
   public static int lastUlRate = -1;
   public static int lastDlRate = -1;
 
-  private static ScheduledExecutorService scheduler;
   private static ScheduledFuture<?> rttHandler;
   private static ScheduledFuture<?> uploadHandler;
   private static ScheduledFuture<?> downloadHandler;
@@ -47,9 +46,9 @@ public class NetworkProfiler {
    * Currently do nothing. Here we can call the energy measurement methods, if needed, but for the
    * Linux devices we will not need them.
    */
-  public void start() {}
+  void start() {}
 
-  public void stop() {
+  void stop() {
     if (rttHandler != null) {
       rttHandler.cancel(true);
     }
@@ -63,7 +62,7 @@ public class NetworkProfiler {
     }
   }
 
-  public static void addNewUlRateEstimate(long bytes, long nanoTime) {
+  private static void addNewUlRateEstimate(long bytes, long nanoTime) {
 
     log.info("Sent " + bytes + " bytes in " + nanoTime + "ns");
     int ulRate = (int) ((((double) 8 * bytes) / nanoTime) * 1000000000);
@@ -86,7 +85,7 @@ public class NetworkProfiler {
     NetworkProfiler.lastUlRate = ulRate;
   }
 
-  public static void addNewDlRateEstimate(long bytes, long nanoTime) {
+  private static void addNewDlRateEstimate(long bytes, long nanoTime) {
 
     log.info("Received " + bytes + " bytes in " + nanoTime + "ns");
     int dlRate = (int) ((((double) 8 * bytes) / nanoTime) * 1000000000);
@@ -117,12 +116,12 @@ public class NetworkProfiler {
 
       vmIp = config.getVm().getIp();
       vmPortBandwidthTest = config.getVm().getClonePortBandwidthTest();
-      scheduler = Executors.newScheduledThreadPool(3);
+      ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(3);
       rttHandler = scheduler.scheduleAtFixedRate(new RttMeasurer(), 0, 13 * 60, TimeUnit.SECONDS);
       downloadHandler =
-          scheduler.scheduleAtFixedRate(new DownloadRateMeasurer(), 4, 29 * 60, TimeUnit.SECONDS);
+          scheduler.scheduleAtFixedRate(new DownloadRateMeasurer(), 1, 29 * 60, TimeUnit.SECONDS);
       uploadHandler =
-          scheduler.scheduleAtFixedRate(new UploadRateMeasurer(), 8, 31 * 60, TimeUnit.SECONDS);
+          scheduler.scheduleAtFixedRate(new UploadRateMeasurer(), 5, 31 * 60, TimeUnit.SECONDS);
     }
   }
 
@@ -159,7 +158,7 @@ public class NetworkProfiler {
     }
   }
 
-  public static void measureRtt() {
+  static void measureRtt() {
     log.info("Sending ping messages to measure the RTT with the server");
 
     int tempRtt = 0;
@@ -196,7 +195,7 @@ public class NetworkProfiler {
    * After the 3 second timeout, close the sockets to cause an Exception and force the InputStream
    * to stopAndSave listening. Use the measured values to estimate the download bandwidth.
    */
-  public static void measureDlRate() {
+  static void measureDlRate() {
 
     long time = 0;
     long rxBytes = 0;
@@ -235,17 +234,17 @@ public class NetworkProfiler {
         os.write(1);
       }
     } catch (IOException e) {
-      log.error("Error while measuring dlRate: " + e);
+      log.info("Finished measuring the dlRate");
     } finally {
       time = System.nanoTime() - time;
       addNewDlRateEstimate(rxBytes, time);
     }
   }
 
-  public static void measureUlRate() {
+  static void measureUlRate() {
 
-    long txTime = 0;
-    long txBytes = 0;
+    long txTime;
+    long txBytes;
 
     try (final Socket clientSocket = new Socket(vmIp, vmPortBandwidthTest);
         OutputStream os = clientSocket.getOutputStream();
@@ -260,7 +259,7 @@ public class NetworkProfiler {
       }
 
     } catch (IOException e) {
-      log.error("Error while measuring ulRate: " + e);
+      log.info("Finished measuring the ulRate");
     } finally {
 
       try (Socket clientSocket = new Socket(vmIp, vmPortBandwidthTest);

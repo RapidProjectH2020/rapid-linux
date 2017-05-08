@@ -4,10 +4,10 @@ import eu.project.rapid.common.RapidConstants.ExecLocation;
 import eu.project.rapid.utils.Configuration;
 
 public class Profiler {
-    Configuration config;
-    ExecLocation execLocation; // Local or Remote
-    ProgramProfiler progProfiler;
-    NetworkProfiler netProfiler;
+    private Configuration config;
+    private ExecLocation execLocation; // Local or Remote
+    private ProgramProfiler progProfiler;
+    private NetworkProfiler netProfiler;
 
     public Profiler(String appName, String methodName, ExecLocation execLocation,
                     Configuration config) {

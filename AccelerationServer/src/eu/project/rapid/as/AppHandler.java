@@ -119,8 +119,7 @@ public class AppHandler implements Runnable {
             } while (command != -1);
 
         } catch (IOException e) {
-            log.error("Could not create client streams: " + e);
-            e.printStackTrace();
+            log.warn("Client disconnected: " + e);
         } finally {
             RapidUtils.closeQuietly(oos);
             RapidUtils.closeQuietly(dOis);
@@ -151,11 +150,9 @@ public class AppHandler implements Runnable {
     private void addLibraries() {
         Long startTime = System.nanoTime();
 
-        FilenameFilter libsFilter = new FilenameFilter() {
-            public boolean accept(File dir, String name) {
-                String lowercaseName = name.toLowerCase();
-                return lowercaseName.startsWith("libs");
-            }
+        FilenameFilter libsFilter = (dir, name) -> {
+            String lowercaseName = name.toLowerCase();
+            return lowercaseName.startsWith("libs");
         };
 
         // Folder where the libraries are extracted
@@ -236,7 +233,6 @@ public class AppHandler implements Runnable {
                 librariesSorted.add(new File(appLibFolder + File.separator + temp));
             }
         }
-
     }
 
     /**

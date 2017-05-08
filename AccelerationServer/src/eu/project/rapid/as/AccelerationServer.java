@@ -64,8 +64,8 @@ public class AccelerationServer {
         log.info("My ID: " + vmId);
         if (!registerWithVmmAndDs()) {
             Scanner in = new Scanner(System.in);
-            log.warn("Couldn't register properly with the VMM and/or the DS. Do you want to continue anyway?" +
-                    " Type n to exit, anything else to continue: ");
+            log.warn("Couldn't register properly with the VMM and/or the DS.\nDo you want to continue anyway?" +
+                    "\nType 'n' to exit, anything else to continue: ");
             String choice = in.nextLine().trim();
             if (choice.equals("n")) {
                 quit("Error while registering, exiting...");
