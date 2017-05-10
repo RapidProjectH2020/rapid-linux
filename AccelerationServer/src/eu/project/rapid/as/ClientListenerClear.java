@@ -20,7 +20,7 @@ public class ClientListenerClear implements Runnable {
 
     private static final Logger log = LogManager.getLogger(ClientListenerClear.class.getSimpleName());
     private Configuration config;
-    private ExecutorService threadPool = Executors.newFixedThreadPool(10);
+    private ExecutorService threadPool = Executors.newFixedThreadPool(1000);
 
     public ClientListenerClear(Configuration config) {
         this.config = config;

@@ -53,7 +53,7 @@ public class DFE {
     private String jarName; // The jar name without ".jar" extension
     private long jarSize;
     private File jarFile;
-    private boolean onLine;
+    protected static boolean onLine;
 
     // Socket and streams with the VM
     private Clone vm;

@@ -25,10 +25,8 @@ public class RapidClassLoader extends ClassLoader {
 
     public Class<?> findClass(String className) {
         // log.info("Inside findClass: " + className);
-        byte classByte[];
-        Class<?> result = null;
-
-        result = (Class<?>) classes.get(className); // checks in cached classes
+        byte[] classByte;
+        Class<?> result = classes.get(className); // checks in cached classes
         if (result != null) {
             return result;
         }
@@ -44,10 +42,8 @@ public class RapidClassLoader extends ClassLoader {
                     appFolder + File.separatorChar + className.replace('.', File.separatorChar) + ".class");
             result = defineClass(className, classByte, 0, classByte.length, null);
             classes.put(className, result);
-
         } catch (IOException e) {
-            // TODO Auto-generated catch block
-            e.printStackTrace();
+            log.error("Exception while reading the class file: " + e);
         }
         return result;
     }
@@ -73,7 +69,7 @@ public class RapidClassLoader extends ClassLoader {
         return buff;
     }
 
-    public void setAppFolder(String appFolder) {
+    void setAppFolder(String appFolder) {
         this.appFolder = appFolder;
     }
 }

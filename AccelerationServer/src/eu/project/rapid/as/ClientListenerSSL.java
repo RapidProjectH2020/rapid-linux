@@ -18,7 +18,7 @@ public class ClientListenerSSL implements Runnable {
 
   private static final Logger log = LogManager.getLogger(ClientListenerSSL.class.getSimpleName());
   private Configuration config;
-  private ExecutorService threadPool = Executors.newFixedThreadPool(10);
+  private ExecutorService threadPool = Executors.newFixedThreadPool(1000);
 
   public ClientListenerSSL(Configuration config) {
     this.config = config;

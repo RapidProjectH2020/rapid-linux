@@ -55,12 +55,12 @@ public class DSE {
     }
 
     ExecLocation findExecLocationDbCache(String appName, String methodName) {
-        if (userChoice == ExecLocation.REMOTE) {
-            log.info("User decided to execute REMOTE");
-            return ExecLocation.REMOTE;
-        } else if (userChoice == ExecLocation.LOCAL) {
+        if (!DFE.onLine || userChoice == ExecLocation.LOCAL) {
             log.info("User decided to execute LOCAL");
             return ExecLocation.LOCAL;
+        } else if (userChoice == ExecLocation.REMOTE) {
+            log.info("User decided to execute REMOTE");
+            return ExecLocation.REMOTE;
         } else { // if (userChoice == ExecLocation.DYNAMIC) {
             if (shouldOffloadDBCache(appName, methodName, NetworkProfiler.lastUlRate,
                     NetworkProfiler.lastDlRate)) {

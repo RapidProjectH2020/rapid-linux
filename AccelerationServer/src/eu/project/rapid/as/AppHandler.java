@@ -19,12 +19,34 @@ import java.nio.file.StandardCopyOption;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
 
+/**
+ * This class deals with the clients that connect for computation offloading.
+ * Currently it handles correctly the normal Java methods.
+ * The native libraries are quite tricky. For now I am reusing the same classloader here
+ * (implemented as static) for the same application. This allows for proper execution of native functions,
+ * but it presents problems if the native library is modified. If that happens, the current classloader will not
+ * load the new native library, which means that the offloaded native methods will not be able to run the latest
+ * implementation.
+ * Also the Java methods will have the same issue, since a class cannot be loaded twice on the same classloader.
+ * By having the <code>classLoaders</code> variable as non static, we solve the issue of the Java classes
+ * (since the classloader will be a new one every time the client connects)
+ * but we have the problem of the native libraries.
+ *
+ * FIXME: try to find a solution for this, similar to the Android one.
+ *
+ * Currently, launching the AS as following:
+ * java -Djava.library.path=~/rapid-server/libs/ -jar rapid-linux-as.jar
+ *
+ */
 public class AppHandler implements Runnable {
 
-    private final Logger log = LogManager.getLogger(AppHandler.class.getSimpleName());
+    private static AtomicInteger counter = new AtomicInteger(0);
+    private final int id = counter.getAndIncrement();
+    private final Logger log = LogManager.getLogger(AppHandler.class.getSimpleName() + "-" + id);
     private Configuration config;
 
     private Socket clientSocket;
@@ -43,13 +65,15 @@ public class AppHandler implements Runnable {
 
     private static Map<String, Integer> apkMap = new ConcurrentHashMap<>(); // appName, apkSize
     private static Map<String, CountDownLatch> apkMapSemaphore = new ConcurrentHashMap<>(); // appName, latch
+    private static final Object syncAppExistsObject = new Object();
+    private static final Object syncAddLibsObject = new Object();
 
     private LinkedList<File> libraries;
     private LinkedList<File> librariesSorted; // Sorted in dependency order
     private Set<String> libNames;
     private SharedLibDependencyGraph dependencies;
 
-    private Map<String, RapidClassLoader> classLoaders;
+    private static Map<String, RapidClassLoader> classLoaders;
 
     public AppHandler(Socket socket, Configuration config) {
 
@@ -61,7 +85,7 @@ public class AppHandler implements Runnable {
         dependencies = new SharedLibDependencyGraph();
 
         if (classLoaders == null) {
-            classLoaders = new HashMap<>();
+            classLoaders = new ConcurrentHashMap<>();
         }
     }
 
@@ -86,9 +110,18 @@ public class AppHandler implements Runnable {
                         log.info("Client requesting REGISTER");
                         jarName = dOis.readUTF();
                         jarLength = dOis.readLong();
-
                         appFolderPath = this.config.getRapidFolder() + File.separator + jarName;
                         jarFilePath = appFolderPath + File.separator + jarName + ".jar";
+
+                        RapidClassLoader rapidClassLoader = classLoaders.get(jarName);
+                        if (rapidClassLoader == null) {
+                            rapidClassLoader = new RapidClassLoader(appFolderPath);
+                        } else {
+                            rapidClassLoader.setAppFolder(appFolderPath);
+                        }
+                        classLoaders.put(jarName, rapidClassLoader);
+                        dOis.setClassLoader(rapidClassLoader);
+
                         if (appExists()) {
                             log.info("Jar file already present");
                             os.write(RapidMessages.AS_APP_PRESENT_AC);
@@ -105,15 +138,7 @@ public class AppHandler implements Runnable {
                         } catch (InterruptedException e) {
                             Thread.currentThread().interrupt();
                         }
-                        RapidClassLoader rapidClassLoader = classLoaders.get(jarName);
-                        if (rapidClassLoader == null) {
-                            rapidClassLoader = new RapidClassLoader(appFolderPath);
-                        } else {
-                            rapidClassLoader.setAppFolder(appFolderPath);
-                        }
-                        classLoaders.put(jarName, rapidClassLoader);
-                        // dOis.setAppFolder(appFolderPath);
-                        dOis.setClassLoader(rapidClassLoader);
+
 
                         addLibraries();
                         calculateLibDependencies();
@@ -160,60 +185,63 @@ public class AppHandler implements Runnable {
 
     @SuppressWarnings("unchecked")
     private void addLibraries() {
-        Long startTime = System.nanoTime();
+        synchronized (syncAddLibsObject) {
+            log.info("Extracting native libraries...");
+            Long startTime = System.nanoTime();
 
-        FilenameFilter libsFilter = (dir, name) -> {
-            String lowercaseName = name.toLowerCase();
-            return lowercaseName.startsWith("libs");
-        };
+            FilenameFilter libsFilter = (dir, name) -> {
+                String lowercaseName = name.toLowerCase();
+                return lowercaseName.startsWith("libs");
+            };
 
-        // Folder where the libraries are extracted
-        File[] libsFolders = new File(appFolderPath).listFiles(libsFilter);
-        if (libsFolders != null && libsFolders.length > 1) {
-            log.warn("More than on libs folder is present, not clear how proceed now: ");
-            for (File f : libsFolders) {
-                log.info("\t" + f.getAbsolutePath());
-            }
-        } else if (libsFolders != null && libsFolders.length == 1) {
-            appLibFolder = libsFolders[0];
-            log.info("Found exactly one libs folder: " + appLibFolder.getAbsolutePath());
-            if (appLibFolder.exists() && appLibFolder.isDirectory()) {
-                int currVersion = 1;
-                if (!appLibFolder.getName().equals("libs")) {
-                    currVersion = Integer.parseInt(appLibFolder.getName().substring("libs-".length())) + 1;
+            // Folder where the libraries are extracted
+            File[] libsFolders = new File(appFolderPath).listFiles(libsFilter);
+            if (libsFolders != null && libsFolders.length > 1) {
+                log.warn("More than on libs folder is present, not clear how proceed now: ");
+                for (File f : libsFolders) {
+                    log.info("\t" + f.getAbsolutePath());
                 }
-                appLibFolder
-                        .renameTo(new File(appLibFolder.getParent() + File.separator + "libs-" + currVersion));
-                appLibFolder = new File(appLibFolder.getParent() + File.separator + "libs-" + currVersion);
+            } else if (libsFolders != null && libsFolders.length == 1) {
+                appLibFolder = libsFolders[0];
+                log.info("Found exactly one libs folder: " + appLibFolder.getAbsolutePath());
+                if (appLibFolder.exists() && appLibFolder.isDirectory()) {
+                    int currVersion = 1;
+                    if (!appLibFolder.getName().equals("libs")) {
+                        currVersion = Integer.parseInt(appLibFolder.getName().substring("libs-".length())) + 1;
+                    }
+                    appLibFolder
+                            .renameTo(new File(appLibFolder.getParent() + File.separator + "libs-" + currVersion));
+                    appLibFolder = new File(appLibFolder.getParent() + File.separator + "libs-" + currVersion);
 
-                log.info("Renaming folder to: " + appLibFolder.getParent() + File.separator + "libs-"
-                        + currVersion);
+                    log.info("Renaming folder to: " + appLibFolder.getParent() + File.separator + "libs-"
+                            + currVersion);
 
-                for (File f : appLibFolder.listFiles()) {
-                    if (Utils.isLinux() && f.getName().contains(".so")
-                            || (Utils.isMac() && f.getName().contains(".jnilib"))) {
-                        // Store the library to the list
-                        libraries.add(f);
-                        libNames.add(f.getName());
+                    for (File f : appLibFolder.listFiles()) {
+                        if (Utils.isLinux() && f.getName().contains(".so")
+                                || (Utils.isMac() && f.getName().contains(".jnilib"))) {
+                            // Store the library to the list
+                            libraries.add(f);
+                            libNames.add(f.getName());
 
-                        // Copy the file on the rapid system lib folder
-                        File newLibFile = new File(
-                                config.getRapidFolder() + File.separator + "libs" + File.separator + f.getName());
-                        log.info("Copying file " + f + " to " + newLibFile + "...");
-                        try {
-                            Files.copy(f.toPath(), newLibFile.toPath(), StandardCopyOption.REPLACE_EXISTING);
-                        } catch (IOException e) {
-                            log.error("Error while copying file " + f + " to " + newLibFile + ": " + e);
+                            // Copy the file on the rapid system lib folder
+                            File newLibFile = new File(
+                                    config.getRapidFolder() + File.separator + "libs" + File.separator + f.getName());
+                            log.info("Copying file " + f + " to " + newLibFile + "...");
+                            try {
+                                Files.copy(f.toPath(), newLibFile.toPath(), StandardCopyOption.REPLACE_EXISTING);
+                            } catch (IOException e) {
+                                log.error("Error while copying file " + f + " to " + newLibFile + ": " + e);
+                            }
                         }
                     }
                 }
+            } else {
+                log.info("No libs* folder present, no shared libraries to load.");
             }
-        } else {
-            log.info("No libs* folder present, no shared libraries to load.");
-        }
 
-        log.info(
-                "Duration of creating libraries: " + ((System.nanoTime() - startTime) / 1000000) + "ms");
+            log.info(
+                    "Duration of creating libraries: " + ((System.nanoTime() - startTime) / 1000000) + "ms");
+        }
     }
 
     private void calculateLibDependencies() {
@@ -394,7 +422,6 @@ public class AppHandler implements Runnable {
                     Method libLoader = objClass.getMethod("loadLibraries", LinkedList.class);
                     try {
                         libLoader.invoke(objToExecute, librariesSorted);
-
                         log.info("2. List of already loaded libraries: ");
                         listAllLoadedNativeLibrariesFromJVM();
 
@@ -479,22 +506,24 @@ public class AppHandler implements Runnable {
     /**
      * @return true if the jar file already exists in the AS.
      */
-    private synchronized boolean appExists() {
-        log.info("Checking if the jar file '" + jarFilePath + "' with size " + jarLength + " exists");
-        File jarFile = new File(jarFilePath);
+    private boolean appExists() {
+        synchronized (syncAppExistsObject) {
+            log.info("Checking if the jar file '" + jarFilePath + "' with size " + jarLength + " exists");
+            File jarFile = new File(jarFilePath);
 
-        if (jarFile.exists() && jarFile.length() == jarLength) {
-            apkMapSemaphore.put(jarName, new CountDownLatch(0));
+            if (jarFile.exists() && jarFile.length() == jarLength) {
+                apkMapSemaphore.put(jarName, new CountDownLatch(0));
+                return true;
+            }
+
+            if (apkMap.get(jarName) == null || apkMap.get(jarName) != jarLength) {
+                apkMap.put(jarName, (int) jarLength);
+                apkMapSemaphore.put(jarName, new CountDownLatch(1));
+                return false;
+            }
+
             return true;
         }
-
-        if (apkMap.get(jarName) == null || apkMap.get(jarName) != jarLength) {
-            apkMap.put(jarName, (int) jarLength);
-            apkMapSemaphore.put(jarName, new CountDownLatch(1));
-            return false;
-        }
-
-        return true;
 //        return jarFile.exists() && jarFile.length() == jarLength;
     }
 
@@ -583,8 +612,22 @@ public class AppHandler implements Runnable {
         ClassLoader dOisLoader = dOis.getClassLoader();
 
         // ClassLoader[] loaders = new ClassLoader[] {appLoader, currentLoader, objLoader};
-        ClassLoader[] loaders = new ClassLoader[]{appLoader};
-        final String[] libraries = ClassScope.getLoadedLibraries(loaders);
+        ClassLoader[] loaders = new ClassLoader[]{currentLoader};
+        listLoadedNativeLibs(loaders);
+
+        loaders = new ClassLoader[]{appLoader};
+        listLoadedNativeLibs(loaders);
+
+        loaders = new ClassLoader[]{objLoader};
+        listLoadedNativeLibs(loaders);
+
+        loaders = new ClassLoader[]{dOisLoader};
+        listLoadedNativeLibs(loaders);
+    }
+
+    private void listLoadedNativeLibs(ClassLoader[] classLoaders) {
+        log.info("Libraries loaded by ClassLoader: " + classLoaders[0]);
+        final String[] libraries = ClassScope.getLoadedLibraries(classLoaders);
         for (String library : libraries) {
             System.out.println(library);
         }
