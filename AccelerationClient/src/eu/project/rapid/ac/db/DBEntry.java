@@ -1,5 +1,7 @@
 package eu.project.rapid.ac.db;
 
+import eu.project.rapid.common.RapidConstants;
+
 import java.io.Serializable;
 
 public class DBEntry implements Serializable {
@@ -8,7 +10,7 @@ public class DBEntry implements Serializable {
 
   private String appName;
   private String methodName;
-  private String execLocation;
+  private RapidConstants.ExecLocation execLocation;
   private String networkType;
   private String networkSubType;
   private int ulRate;
@@ -17,13 +19,13 @@ public class DBEntry implements Serializable {
   private long execEnergy;
   private long timestamp;
 
-  public DBEntry(String appName, String methodName, String execLocation, String networkType,
-      int ulRate, int dlRate, long execDuration) {
+  public DBEntry(String appName, String methodName, RapidConstants.ExecLocation execLocation, String networkType,
+                 int ulRate, int dlRate, long execDuration) {
     this(appName, methodName, execLocation, networkType, null, ulRate, dlRate, execDuration, -1);
   }
 
-  public DBEntry(String appName, String methodName, String execLocation, String networkType,
-      String networkSubType, int ulRate, int dlRate, long execDuration, long execEnergy) {
+  public DBEntry(String appName, String methodName, RapidConstants.ExecLocation execLocation, String networkType,
+                 String networkSubType, int ulRate, int dlRate, long execDuration, long execEnergy) {
 
     this.appName = appName;
     this.methodName = methodName;
@@ -68,14 +70,14 @@ public class DBEntry implements Serializable {
   /**
    * @return the execLocation
    */
-  public String getExecLocation() {
+  public RapidConstants.ExecLocation getExecLocation() {
     return execLocation;
   }
 
   /**
    * @param execLocation the execLocation to set
    */
-  public void setExecLocation(String execLocation) {
+  public void setExecLocation(RapidConstants.ExecLocation execLocation) {
     this.execLocation = execLocation;
   }
 

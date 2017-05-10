@@ -1,5 +1,6 @@
 package eu.project.rapid.ac.db;
 
+import eu.project.rapid.ac.DFE;
 import eu.project.rapid.utils.Constants;
 import eu.project.rapid.utils.Utils;
 import org.apache.logging.log4j.LogManager;
@@ -23,14 +24,15 @@ public class DBCache {
     private static final Logger log = LogManager.getLogger(DBCache.class.getName());
 
     private static int nrElements;
-    private static DBCache dbCache;
+    private static DBCache instance;
     private static Map<String, Deque<DBEntry>> dbMap; // appName is the key
 
     @SuppressWarnings("unchecked")
-    private DBCache() {
+    private DBCache(String appName) {
         try {
-            log.info("Reading the dbCache from file: " + Constants.FILE_DB_CACHE);
-            dbMap = (Map<String, Deque<DBEntry>>) Utils.readObjectFromFile(Constants.FILE_DB_CACHE);
+            String dbCacheFile = Constants.FILE_DB_CACHE + appName + ".ser";
+            log.info("Reading the dbCache from file: " + dbCacheFile);
+            dbMap = (Map<String, Deque<DBEntry>>) Utils.readObjectFromFile(dbCacheFile);
         } catch (ClassNotFoundException | IOException e) {
             log.warn("Could not read the dbCache from file: " + e);
         }
@@ -40,15 +42,21 @@ public class DBCache {
         }
     }
 
-    ;
+    public static DBCache getDbCache(String appName) {
+        // local variable increases performance by 25 percent according to
+        // Joshua Bloch "Effective Java, Second Edition", p. 283-284
+        DBCache result = instance;
 
-    public static DBCache getDbCache() {
-        if (dbCache == null) {
-            log.info("Creating the dbCache object");
-            dbCache = new DBCache();
+        if (result == null) {
+            synchronized (DFE.class) {
+                result = instance;
+                if (result == null) {
+                    instance = result = new DBCache(appName);
+                }
+            }
         }
 
-        return dbCache;
+        return result;
     }
 
     public void insertEntry(DBEntry entry) {

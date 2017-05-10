@@ -19,7 +19,7 @@ public class DSE {
     private static DSE instance;
     private ExecLocation userChoice = ExecLocation.DYNAMIC;
 
-    private static boolean VERBOSE_LOG = false;
+    private static final boolean VERBOSE_LOG = false;
 
     // To be used in case of no previous remote execution.
     // If the ulRate and dlRate are bigger than these values then we offload
@@ -34,7 +34,7 @@ public class DSE {
 
     private DSE(String appName) {
         DSE.appName = appName;
-        this.dbCache = DBCache.getDbCache();
+        this.dbCache = DBCache.getDbCache(appName);
     }
 
     static DSE getInstance(String appName) {
@@ -82,8 +82,6 @@ public class DSE {
      */
     private boolean shouldOffloadDBCache(String appName, String methodName, int currUlRate,
                                          int currDlRate) {
-
-        DBCache dbCache = DBCache.getDbCache();
 
         log.info("Trying to decide using DB cache where to execute the method: appName=" + appName
                 + ", methodName=" + methodName + ", currUlRate=" + currUlRate + ", currDlRate="
@@ -179,7 +177,7 @@ public class DSE {
         // DECISION 2
         int NR_TIMES_SWITCH_SIDES = 10;
         int count = 0;
-        String prevExecLocation = null;
+        ExecLocation prevExecLocation = null;
         for (DBEntry e : dbCache.getAllEntriesFilteredOn(methodName)) {
             if (count < NR_TIMES_SWITCH_SIDES
                     && (prevExecLocation == null || e.getExecLocation().equals(prevExecLocation))) {
@@ -191,20 +189,22 @@ public class DSE {
         }
 
         if (count == NR_TIMES_SWITCH_SIDES) {
-            if (prevExecLocation.equals("REMOTE")) {
-                log.info("Decision 2: Too many remote executions in a row.");
-                return false;
-            } else if (prevExecLocation.equals("LOCAL")) {
-                log.info("Decision 2: Too many local executions in a row.");
-                if (currUlRate > MIN_UL_RATE_OFFLOAD_1_TIME && currDlRate > MIN_DL_RATE_OFFLOAD_1_TIME) {
-                    log.info("Decision 2->1: No previous remote executions. Good connectivity.");
-                    return true;
-                } else {
-                    log.info("Decision 2->1: No previous remote executions. Bad connectivity.");
+            switch (prevExecLocation) {
+                case REMOTE:
+                    log.info("Decision 2: Too many remote executions in a row.");
                     return false;
-                }
-            } else {
-                log.error("Decision 2: This shouldn't happen, check the implementation.");
+                case LOCAL:
+                    log.info("Decision 2: Too many local executions in a row.");
+                    if (currUlRate > MIN_UL_RATE_OFFLOAD_1_TIME && currDlRate > MIN_DL_RATE_OFFLOAD_1_TIME) {
+                        log.info("Decision 2->1: No previous remote executions. Good connectivity.");
+                        return true;
+                    } else {
+                        log.info("Decision 2->1: No previous remote executions. Bad connectivity.");
+                        return false;
+                    }
+                default:
+                    log.error("Decision 2: This shouldn't happen, check the implementation.");
+                    break;
             }
         }
 
@@ -282,12 +282,12 @@ public class DSE {
     }
 
 
-    String getLastExecLocation(String appName, String methodName) {
+    ExecLocation getLastExecLocation(String methodName) {
         Deque<DBEntry> results = dbCache.getAllEntriesFilteredOn(appName, methodName);
         return results.getFirst().getExecLocation();
     }
 
-    long getLastExecDuration(String appName, String methodName) {
+    long getLastExecDuration(String methodName) {
         Deque<DBEntry> results = dbCache.getAllEntriesFilteredOn(appName, methodName);
         return results.getFirst().getExecDuration();
     }

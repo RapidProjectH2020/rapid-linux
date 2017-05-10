@@ -88,7 +88,7 @@ public final class Constants {
   public static final String RAPID_FOLDER_CLIENT_KEY = "rapidClientFolder";
   public static final String RAPID_FOLDER_CLIENT_DEFAULT = "rapid-client";
   public static final String FILE_DB_CACHE =
-      RAPID_FOLDER_CLIENT_DEFAULT + File.separator + "dbCache.ser";
+      RAPID_FOLDER_CLIENT_DEFAULT + File.separator + "dbCache-";
   public static final String AC_RM_PORT_KEY = "acRmPort";
   public static final String CONNECT_PREV_VM_KEY = "connectToPrevVm";
   public static final String CONNECT_PREV_VM_DEFAULT = FALSE;

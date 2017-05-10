@@ -53,7 +53,7 @@ public class DFE {
     private String jarName; // The jar name without ".jar" extension
     private long jarSize;
     private File jarFile;
-    protected static boolean onLine;
+    static boolean onLine;
 
     // Socket and streams with the VM
     private Clone vm;
@@ -66,7 +66,7 @@ public class DFE {
     private long prepareDataDuration = -1;
 
     private static boolean isDFEActive = false;
-    private static final int nrTaskRunners = 1;
+    private static final int nrTaskRunners = 3;
     private static ExecutorService threadPool;
     private static BlockingDeque<Task> tasks = new LinkedBlockingDeque<>();
     private static AtomicInteger taskId = new AtomicInteger();
@@ -730,38 +730,16 @@ public class DFE {
         }
     }
 
-    public void setUserChoice(String userChoice) {
-        switch (userChoice) {
-            case "LOCAL":
-                this.setUserChoice(ExecLocation.LOCAL);
-                break;
-
-            case "REMOTE":
-                this.setUserChoice(ExecLocation.REMOTE);
-                break;
-
-            case "DYNAMIC":
-                this.setUserChoice(ExecLocation.DYNAMIC);
-                break;
-
-            default:
-                log.error("Bad user choice: " + userChoice + ". Defaulting to " + ExecLocation.DYNAMIC);
-                this.setUserChoice(ExecLocation.DYNAMIC);
-                break;
-        }
-    }
-
-
     public String getRapidFolder() {
         return config.getRapidFolder();
     }
 
 
-    public String getLastExecLocation(String appName, String methodName) {
-        return dse.getLastExecLocation(appName, methodName);
+    public ExecLocation getLastExecLocation(String methodName) {
+        return dse.getLastExecLocation(methodName);
     }
 
-    public long getLastExecDuration(String appName, String methodName) {
-        return dse.getLastExecDuration(appName, methodName);
+    public long getLastExecDuration(String methodName) {
+        return dse.getLastExecDuration(methodName);
     }
 }
