@@ -730,6 +730,14 @@ public class DFE {
         }
     }
 
+    /**
+     * Choose if connection should be encrypted or not.
+     * @param encrypted true if connection should be encrypted, false if connection should be cleartext.
+     */
+    public void setConnEncrypted(boolean encrypted) {
+        config.setConnectSsl(encrypted);
+    }
+
     public String getRapidFolder() {
         return config.getRapidFolder();
     }

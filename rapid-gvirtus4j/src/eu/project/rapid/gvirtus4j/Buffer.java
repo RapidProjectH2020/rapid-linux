@@ -1,12 +1,19 @@
 package eu.project.rapid.gvirtus4j;
 
+import java.io.IOException;
+
 public final class Buffer {
 
     static {
         try {
-            System.loadLibrary("native-lib"); // Load native library at runtime
+            // FIXME: check for OS type before loading the lib
+//            Util.loadNativLibFromResources(Buffer.class.getClassLoader(), "libs/libnative-lib.jnilib");
+            Util.loadNativLibFromResources(Buffer.class.getClassLoader(), "libs/libnative-lib.so");
         } catch (UnsatisfiedLinkError e) {
-            System.err.println("JniTest - " + "Could not load native library, maybe this is running on the VM.");
+            System.err.println("JniTest - " + "UnsatisfiedLinkError, could not load native library: " + e);
+            e.printStackTrace();
+        } catch (IOException e) {
+            System.err.println("JniTest - " + "IOException, could not load native library: " + e);
         }
     }
 
@@ -16,7 +23,7 @@ public final class Buffer {
         mpBuffer = "";
     }
 
-    public static void clear() {
+    static void clear() {
         mpBuffer = "";
     }
 
@@ -25,56 +32,56 @@ public final class Buffer {
         mpBuffer += Util.bytesToHex(bites);
     }
 
-    public static void Add(int item) {
+    static void Add(int item) {
         byte[] bites = {(byte) item, (byte) 0, (byte) 0, (byte) 0, (byte) 0, (byte) 0, (byte) 0, (byte) 0};
         mpBuffer += Util.bytesToHex(bites);
     }
 
-    public static void Add(long item) {
+    static void Add(long item) {
         byte[] bites = {(byte) item, (byte) 0, (byte) 0, (byte) 0, (byte) 0, (byte) 0, (byte) 0, (byte) 0};
         mpBuffer += Util.bytesToHex(bites);
     }
 
-    public static void Add(String item) {
+    static void Add(String item) {
         byte[] bites = Util.hexToBytes(item);
         mpBuffer += Util.bytesToHex(bites);
     }
 
-    public static void Add(float[] item) {
+    static void Add(float[] item) {
         String js = prepareFloat(item);  // invoke the native method
         mpBuffer += js;
 
     }
 
-    public static void Add(int[] item) {
+    static void Add(int[] item) {
         Add(item.length * 4);
         for (int i = 0; i < item.length; i++) {
             AddInt(item[i]);
         }
     }
 
-    public static void AddInt(int item) {
+    static void AddInt(int item) {
         byte[] bits = Util.intToByteArray(item);
         mpBuffer += Util.bytesToHex(bits);
 
     }
 
-    public static void AddPointer(int item) {
+    static void AddPointer(int item) {
         byte[] bites = {(byte) item, (byte) 0, (byte) 0, (byte) 0};
         int size = (Util.Sizeof.INT);
         Add(size);
         mpBuffer += Util.bytesToHex(bites);
     }
 
-    public static String GetString() {
+    static String GetString() {
         return mpBuffer;
     }
 
-    public static long Size() {
+    static long Size() {
         return mpBuffer.length();
     }
 
-    public static void AddStruct(CudaDeviceProp struct) {
+    static void AddStruct(CudaDeviceProp struct) {
         byte[] bites = new byte[640];
         bites[0] = (byte) 0x78;
         bites[1] = (byte) 0x02;
@@ -85,14 +92,12 @@ public final class Buffer {
         mpBuffer += Util.bytesToHex(bites);
     }
 
-
-    public static void AddByte(int i) {
+    static void AddByte(int i) {
         String jps = prepareSingleByte(i);  // invoke the native method
         mpBuffer += jps;
     }
 
-
-    public static void AddByte4Ptx(String ptxSource, long size) {
+    static void AddByte4Ptx(String ptxSource, long size) {
         String jps = preparePtxSource(ptxSource, size);  // invoke the native method
         mpBuffer += jps;
     }
