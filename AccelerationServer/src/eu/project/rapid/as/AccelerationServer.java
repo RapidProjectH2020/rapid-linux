@@ -30,8 +30,9 @@ public class AccelerationServer {
     private Configuration config;
 
     // The ID of the user that is requesting this VM.
-    private long userId = -1; // The userId will be given by the VMM
-    private String vmIp; // The vmIp should be extracted by us
+    static long userId = -1; // The userId will be given by the VMM
+    static long vmId; // The vmId will be assigned by the DS
+    static String vmIp; // The vmIp should be extracted by us
 
     public AccelerationServer() {
         log.info("Starting the AS ");
@@ -59,8 +60,6 @@ public class AccelerationServer {
         waitForNetworkToBeUp();
         vmIp = RapidUtils.getVmIpLinux();
         log.info("My IP: " + vmIp);
-        int vmId = -1;
-        log.info("My ID: " + vmId);
         if (!registerWithVmmAndDs()) {
             log.warn("Couldn't register properly with the VMM and/or the DS.\nContinue anyway...");
         }
@@ -177,6 +176,8 @@ public class AccelerationServer {
             oos.flush();
             int response = ois.readByte();
             if (response == RapidMessages.OK) {
+                vmId = ois.readLong();
+                log.info("Received vmId: " + vmId);
                 return true;
             } else if (response == RapidMessages.ERROR) {
                 log.info("DS replied with ERROR to the register request");

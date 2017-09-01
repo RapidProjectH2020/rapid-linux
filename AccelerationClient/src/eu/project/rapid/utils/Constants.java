@@ -96,6 +96,7 @@ public final class Constants {
   public static final String CONNECT_SSL_DEFAULT = FALSE;
   public static final String SHARED_PREFS_KEY = "sharedPrefs";
   public static final String SHARED_PREFS_DEFAULT = "sharedPrefs.properties";
+  public static final String QOS_FILENAME = "rapid-qos.xml";
 
   private Constants() {
     throw new AssertionError();

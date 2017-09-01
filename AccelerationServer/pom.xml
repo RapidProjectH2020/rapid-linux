@@ -68,17 +68,19 @@
             <artifactId>log4j-api</artifactId>
             <version>2.5</version>
         </dependency>
-        <!-- <dependency>
+        <dependency>
             <groupId>eu.project.rapid</groupId>
             <artifactId>rapid-linux-ac</artifactId>
-            <version>0.1.1-SNAPSHOT</version>
+            <version>0.0.3-SNAPSHOT</version>
             <scope>compile</scope>
-        </dependency> -->
+        </dependency>
+        <!--
         <dependency>
             <groupId>eu.project.rapid</groupId>
             <artifactId>rapid-linux-ac</artifactId>
             <version>0.0.1</version>
             <scope>compile</scope>
         </dependency>
+        -->
     </dependencies>
 </project>

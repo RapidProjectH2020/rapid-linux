@@ -7,8 +7,8 @@ public final class Buffer {
     static {
         try {
             // FIXME: check for OS type before loading the lib
-//            Util.loadNativLibFromResources(Buffer.class.getClassLoader(), "libs/libnative-lib.jnilib");
-            Util.loadNativLibFromResources(Buffer.class.getClassLoader(), "libs/libnative-lib.so");
+            Util.loadNativLibFromResources(Buffer.class.getClassLoader(), "libs/libnative-lib.jnilib");
+//            Util.loadNativLibFromResources(Buffer.class.getClassLoader(), "libs/libnative-lib.so");
         } catch (UnsatisfiedLinkError e) {
             System.err.println("JniTest - " + "UnsatisfiedLinkError, could not load native library: " + e);
             e.printStackTrace();

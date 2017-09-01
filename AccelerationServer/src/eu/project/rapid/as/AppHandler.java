@@ -1,6 +1,7 @@
 package eu.project.rapid.as;
 
 import eu.project.rapid.ac.ResultContainer;
+import eu.project.rapid.common.Clone;
 import eu.project.rapid.common.RapidMessages;
 import eu.project.rapid.common.RapidUtils;
 import eu.project.rapid.utils.Configuration;
@@ -10,9 +11,11 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 import java.io.*;
+import java.lang.reflect.Array;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
+import java.net.InetSocketAddress;
 import java.net.Socket;
 import java.nio.file.Files;
 import java.nio.file.StandardCopyOption;
@@ -35,12 +38,11 @@ import java.util.jar.JarFile;
  * By having the <code>classLoaders</code> variable as non static, we solve the issue of the Java classes
  * (since the classloader will be a new one every time the client connects)
  * but we have the problem of the native libraries.
- *
+ * <p>
  * FIXME: try to find a solution for this, similar to the Android one.
- *
+ * <p>
  * Currently, launching the AS as following:
  * java -Djava.library.path=~/rapid-server/libs/ -jar rapid-linux-as.jar
- *
  */
 public class AppHandler implements Runnable {
 
@@ -75,7 +77,22 @@ public class AppHandler implements Runnable {
 
     private static Map<String, RapidClassLoader> classLoaders;
 
-    public AppHandler(Socket socket, Configuration config) {
+    // The number of clone helpers requested (not considering the main VM)
+    private static int numberOfCloneHelpers = 0;
+    private Boolean[] pausedHelper; // Needed for synchronization with the clone helpers
+    private int requestFromMainServer = 0; // The main clone sends commands to the clone helpers
+    private Object responsesFromServers; // Array of partial results returned by the clone helpers
+    private final AtomicInteger nrClonesReady = new AtomicInteger(0); // The main thread waits for all the
+    // clone helpers to finish execution
+    private String methodName; // the method to be executed
+    private Class<?>[] pTypes; // the types of the parameters passed to the method
+    private Object[] pValues; // the values of the parameters to be passed to the method
+    private Class<?> returnType; // the return type of the method
+    // The main thread has cloneId = 0
+    // the clone helpers have cloneId \in [1, nrClones-1]
+    private int cloneHelperId = 0;
+
+    AppHandler(Socket socket, Configuration config) {
 
         this.clientSocket = socket;
         this.config = config;
@@ -151,6 +168,12 @@ public class AppHandler implements Runnable {
                         oos.writeObject(result);
                         oos.flush();
                         oos.reset();
+                        break;
+
+
+                    case RapidMessages.CLONE_ID_SEND:
+                        cloneHelperId = is.read();
+                        Utils.writeCloneHelperId(cloneHelperId);
                         break;
                 }
             } while (command != -1);
@@ -294,8 +317,8 @@ public class AppHandler implements Runnable {
             // Receive the number of VMs needed
             int nrVMs = dOis.readInt();
             log.info("The user is asking for " + nrVMs + " VMs");
-            // numberOfCloneHelpers--;
-            // withMultipleClones = numberOfCloneHelpers > 0;
+            numberOfCloneHelpers--;
+            boolean withMultipleClones = numberOfCloneHelpers > 0;
 
             // Get the object
             objToExecute = dOis.readObject();
@@ -328,13 +351,13 @@ public class AppHandler implements Runnable {
 
             log.info("Read Method");
             // Read the name of the method to be executed
-            String methodName = (String) dOis.readObject();
+            methodName = (String) dOis.readObject();
 
             Object tempTypes = dOis.readObject();
-            Class<?>[] pTypes = (Class[]) tempTypes;
+            pTypes = (Class[]) tempTypes;
 
             Object tempValues = dOis.readObject();
-            Object[] pValues = (Object[]) tempValues;
+            pValues = (Object[]) tempValues;
 
             log.info("Run Method " + methodName);
             // Get the method to be run by reflection
@@ -342,44 +365,41 @@ public class AppHandler implements Runnable {
             // And force it to be accessible (quite often will be declared private originally)
             runMethod.setAccessible(true);
 
-            // if (withMultipleClones) {
-            // pausedHelper = new Boolean[numberOfCloneHelpers + 1];
-            // for (int i = 1; i < numberOfCloneHelpers + 1; i++)
-            // pausedHelper[i] = true;
-            //
-            // withMultipleClones = connectToServerHelpers();
-            //
-            // if (withMultipleClones) {
-            // Log.i(TAG, "The clones are successfully allocated.");
-            //
-            // returnType = runMethod.getReturnType(); // the return type of the offloaded method
-            //
-            // // Allocate the space for the responses from the other clones
-            // responsesFromServers = Array.newInstance(returnType, numberOfCloneHelpers + 1);
-            //
-            // // Wait until all the threads are connected to the clone helpers
-            // waitForThreadsToBeReady();
-            //
-            // Log.d(Constants.DEMO_TAG, "DISTRIBUTE_EXECUTION");
-            //
-            // // Give the command to register the app first
-            // sendCommandToAllThreads(ControlMessages.APK_REGISTER);
-            //
-            // // Wait again for the threads to be ready
-            // waitForThreadsToBeReady();
-            //
-            // // And send a ping to all clones just for testing
-            // // sendCommandToAllThreads(ControlMessages.PING);
-            // // waitForThreadsToBeReady();
-            // /**
-            // * Wake up the server helper threads and tell them to send the object to execute, the
-            // * method, parameter types and parameter values
-            // */
-            // sendCommandToAllThreads(ControlMessages.EXECUTE);
-            // } else {
-            // Log.i(TAG, "Could not allocate other clones, doing only my part of the job.");
-            // }
-            // }
+            if (withMultipleClones) {
+                pausedHelper = new Boolean[numberOfCloneHelpers + 1];
+                for (int i = 1; i < numberOfCloneHelpers + 1; i++)
+                    pausedHelper[i] = true;
+
+                withMultipleClones = connectToServerHelpers();
+
+                if (withMultipleClones) {
+                    log.info("The clones are successfully allocated.");
+
+                    returnType = runMethod.getReturnType(); // the return type of the offloaded method
+
+                    // Allocate the space for the responses from the other clones
+                    responsesFromServers = Array.newInstance(returnType, numberOfCloneHelpers + 1);
+
+                    // Wait until all the threads are connected to the clone helpers
+                    waitForThreadsToBeReady();
+
+                    // Give the command to register the app first
+                    sendCommandToAllThreads(RapidMessages.AC_REGISTER_AS);
+
+                    // Wait again for the threads to be ready
+                    waitForThreadsToBeReady();
+
+                    // And send a ping to all clones just for testing
+                    // sendCommandToAllThreads(ControlMessages.PING);
+                    // waitForThreadsToBeReady();
+
+                    // Wake up the server helper threads and tell them to send the object to execute, the
+                    // method, parameter types and parameter values
+                    sendCommandToAllThreads(RapidMessages.AC_OFFLOAD_REQ_AS);
+                } else {
+                    log.info("Could not allocate other clones, doing only my part of the job.");
+                }
+            }
 
             // Run the method and retrieve the result
             Object result;
@@ -444,50 +464,46 @@ public class AppHandler implements Runnable {
 
             log.info(runMethod.getName() + ": retrieveAndExecute time - "
                     + ((System.nanoTime() - startTime) / 1000000) + "ms");
-            //
-            // if (withMultipleClones) {
-            // // Wait for all the clones to finish execution before returning the result
-            // waitForThreadsToBeReady();
-            // Log.d(TAG, "All servers finished execution, send result back.");
-            //
-            // // Kill the threads.
-            // sendCommandToAllThreads(-1);
-            //
-            // synchronized (responsesFromServers) {
-            // Array.set(responsesFromServers, 0, result); // put the result of the main clone as the
-            // // first element of the array
-            // }
-            //
-            // // Call the reduce function implemented by the developer to combine the partial results.
-            // try {
-            // // Array of the returned type
-            // Class<?> arrayReturnType =
-            // Array.newInstance(returnType, numberOfCloneHelpers + 1).getClass();
-            // Method runMethodReduce =
-            // objClass.getDeclaredMethod(methodName + "Reduce", arrayReturnType);
-            // runMethodReduce.setAccessible(true);
-            // Log.i(TAG, "Reducing the results using the method: " + runMethodReduce.getName());
-            //
-            // Object reducedResult =
-            // runMethodReduce.invoke(objToExecute, new Object[] {responsesFromServers});
-            // result = reducedResult;
-            //
-            // Log.i(TAG, "The reduced result: " + reducedResult);
-            //
-            // } catch (Exception e) {
-            // Log.e(TAG, "Impossible to reduce the result");
-            // e.printStackTrace();
-            // }
-            // }
+
+            if (withMultipleClones) {
+                // Wait for all the clones to finish execution before returning the result
+                waitForThreadsToBeReady();
+                log.debug("All servers finished execution, send result back.");
+
+                // Kill the threads.
+                sendCommandToAllThreads(-1);
+
+                synchronized (responsesFromServers) {
+                    Array.set(responsesFromServers, 0, result); // put the result of the main clone as the
+                    // first element of the array
+                }
+
+                // Call the reduce function implemented by the developer to combine the partial results.
+                try {
+                    // Array of the returned type
+                    Class<?> arrayReturnType =
+                            Array.newInstance(returnType, numberOfCloneHelpers + 1).getClass();
+                    Method runMethodReduce =
+                            objClass.getDeclaredMethod(methodName + "Reduce", arrayReturnType);
+                    runMethodReduce.setAccessible(true);
+                    log.info("Reducing the results using the method: " + runMethodReduce.getName());
+
+                    Object reducedResult =
+                            runMethodReduce.invoke(objToExecute, new Object[]{responsesFromServers});
+                    result = reducedResult;
+
+                    log.info("The reduced result: " + reducedResult);
+
+                } catch (Exception e) {
+                    log.error("Impossible to reduce the result");
+                    e.printStackTrace();
+                }
+            }
 
             // If this is the main VM send back also the object to execute,
             // otherwise the helper VMs don't need to send it back.
-            int vmHelperId = 0;
-            if (vmHelperId == 0) {
-                // If we choose to also send back the object then the number of bytes will increase.
-                // If necessary just uncomment the line below.
+            if (cloneHelperId == 0) {
                 return new ResultContainer(objToExecute, result, getObjectDuration, execDuration);
-                // return new ResultContainer(null, result, getObjectDuration, execDuration);
             } else {
                 return new ResultContainer(null, result, getObjectDuration, execDuration);
             }
@@ -499,9 +515,33 @@ public class AppHandler implements Runnable {
             e.printStackTrace();
             return new ResultContainer(e, getObjectDuration);
         }
-
     }
 
+
+    private void waitForThreadsToBeReady() {
+        // Wait for the threads to be ready
+        synchronized (nrClonesReady) {
+            while (nrClonesReady.get() < numberOfCloneHelpers) {
+                try {
+                    nrClonesReady.wait();
+                } catch (InterruptedException e) {
+                    log.info("Thread wait() was interrupted, putting back to sleep...");
+                }
+            }
+
+            nrClonesReady.set(0);
+        }
+    }
+
+    private void sendCommandToAllThreads(int command) {
+        synchronized (pausedHelper) {
+            for (int i = 1; i < numberOfCloneHelpers + 1; i++) {
+                pausedHelper[i] = false;
+            }
+            requestFromMainServer = command;
+            pausedHelper.notifyAll();
+        }
+    }
 
     /**
      * @return true if the jar file already exists in the AS.
@@ -538,7 +578,9 @@ public class AppHandler implements Runnable {
             Utils.deleteDir(appFolder);
         }
         // Create the folder.
-        appFolder.mkdirs();
+        if (!appFolder.mkdirs()) {
+            log.warn("Could not create the app folder: " + appFolder.getAbsolutePath());
+        }
 
         File jarFile = new File(appFolder, jarName + ".jar");
         FileOutputStream fos = null;
@@ -581,10 +623,14 @@ public class AppHandler implements Runnable {
                 JarEntry jarEntry = enumeration.nextElement();
                 File f = new File(appFolder, jarEntry.getName());
                 if (jarEntry.isDirectory()) {
-                    f.mkdirs();
+                    if (!f.mkdirs()) {
+                        log.warn("Could not create the file: " + f.getAbsolutePath());
+                    }
                 } else {
                     if (!f.getParentFile().exists()) {
-                        f.getParentFile().mkdirs();
+                        if (!f.getParentFile().mkdirs()) {
+                            log.warn("Could not create the file: " + f.getAbsolutePath());
+                        }
                     }
                     InputStream is = jar.getInputStream(jarEntry);
                     FileOutputStream fos2 = new FileOutputStream(f);
@@ -630,6 +676,277 @@ public class AppHandler implements Runnable {
         final String[] libraries = ClassScope.getLoadedLibraries(classLoaders);
         for (String library : libraries) {
             System.out.println(library);
+        }
+    }
+
+
+    /**
+     * Connect to the DS and ask for more VMs.<br>
+     * The DS will reply with the IP address of the VMs<br>
+     * <p>
+     * Launch the threads to connect to the other VMs.<br>
+     */
+    private boolean connectToServerHelpers() {
+
+        Socket socket = null;
+        OutputStream os;
+        InputStream is;
+        ObjectOutputStream oos = null;
+        ObjectInputStream ois = null;
+
+        try {
+
+            log.debug("Trying to connect to the DS - " + config.getDsIp() + ":" + config.getDsPort());
+
+            // Connect to the directory service
+            socket = new Socket(config.getDsIp(), config.getDsPort());
+            os = socket.getOutputStream();
+            is = socket.getInputStream();
+
+            oos = new ObjectOutputStream(os);
+            ois = new ObjectInputStream(is);
+
+            log.debug("Connection established with the DS - " + config.getDsIp() + ":"
+                    + config.getDsPort());
+
+            // Ask for helper VMs
+            os.write(RapidMessages.PARALLEL_REQ);
+            oos.writeLong(AccelerationServer.vmId);
+            oos.writeInt(numberOfCloneHelpers);
+            oos.flush();
+
+            ArrayList<Clone> cloneHelpers = (ArrayList<Clone>) ois.readObject();
+            if (cloneHelpers.size() != numberOfCloneHelpers) {
+                log.info("The DS could not start the needed clones, actually started: "
+                        + cloneHelpers.size());
+                return false;
+            }
+
+            // Assign the IDs to the new clone helpers
+            log.info("The helper clones:");
+            int cloneHelperId = 1;
+            for (Clone c : cloneHelpers) {
+
+                log.info(c.toString());
+
+                // Start the thread that should connect to the clone helper
+                (new VMHelperThread(config, cloneHelperId++, c)).start();
+            }
+
+            return true;
+
+        } catch (Exception e) {
+            log.error("Exception connecting to the manager: " + e);
+        } catch (Error e) {
+            log.error("Error connecting to the manager: " + e);
+        } finally {
+            RapidUtils.closeQuietly(ois);
+            RapidUtils.closeQuietly(oos);
+            RapidUtils.closeQuietly(socket);
+        }
+
+        return false;
+    }
+
+
+    /**
+     * The thread taking care of communication with the VM helpers
+     */
+    private class VMHelperThread extends Thread {
+
+        private String TAG = "ServerHelper-";
+        private Configuration config;
+        private Clone clone;
+        private Socket mSocket;
+        private OutputStream mOutStream;
+        private InputStream mInStream;
+        private ObjectOutputStream mObjOutStream;
+        private DynamicObjectInputStream mObjInStream;
+
+        // This id is assigned to the clone helper by the main clone.
+        // It is needed for splitting the input when parallelizing a certain method (see for example
+        // virusScanning).
+        // To not be confused with the id that the AS has read from the config file.
+        private int cloneHelperId;
+
+        VMHelperThread(Configuration config, int cloneHelperId, Clone clone) {
+            this.config = config;
+            this.clone = clone;
+            this.cloneHelperId = cloneHelperId;
+            TAG = TAG + this.cloneHelperId;
+        }
+
+        @Override
+        public void run() {
+
+            try {
+
+                // Try to connect to the VM helper.
+                // If it is not possible to connect stop running.
+                if (!establishConnection()) {
+                    // Try to close created sockets
+                    closeConnection();
+                    return;
+                }
+
+                // Send the cloneId to this clone.
+                mOutStream.write(RapidMessages.CLONE_ID_SEND);
+                mOutStream.write(cloneHelperId);
+
+                while (true) {
+
+                    synchronized (nrClonesReady) {
+                        log.debug("Server Helpers started so far: " + nrClonesReady.addAndGet(1));
+                        if (nrClonesReady.get() >= AppHandler.numberOfCloneHelpers)
+                            nrClonesReady.notifyAll();
+                    }
+
+                    // wait() until the main server wakes up the thread then do something depending on the
+                    // request
+                    synchronized (pausedHelper) {
+                        while (pausedHelper[cloneHelperId]) {
+                            try {
+                                pausedHelper.wait();
+                            } catch (InterruptedException e) {
+                                log.info("Thread wait() was interrupted, putting back to sleep");
+                            }
+                        }
+
+                        pausedHelper[cloneHelperId] = true;
+                    }
+
+                    log.debug("Sending command: " + requestFromMainServer);
+
+                    switch (requestFromMainServer) {
+
+                        case RapidMessages.PING:
+                            pingOtherServer();
+                            break;
+
+                        case RapidMessages.AC_REGISTER_AS:
+                            mOutStream.write(RapidMessages.AC_REGISTER_AS);
+                            mObjOutStream.writeObject(jarName);
+                            mObjOutStream.writeLong(jarLength);
+                            mObjOutStream.flush();
+
+                            int response = mInStream.read();
+
+                            if (response == RapidMessages.AS_APP_REQ_AC) {
+                                // Send the APK file if needed
+                                log.debug("Sending apk to the clone " + clone.getIp());
+
+                                File apkFile = new File(jarFilePath);
+                                FileInputStream fin = new FileInputStream(apkFile);
+                                BufferedInputStream bis = new BufferedInputStream(fin);
+                                int BUFFER_SIZE = 8192;
+                                byte[] tempArray = new byte[BUFFER_SIZE];
+                                int read;
+                                int totalRead = 0;
+                                log.debug("Sending apk");
+                                while ((read = bis.read(tempArray, 0, tempArray.length)) > -1) {
+                                    totalRead += read;
+                                    mObjOutStream.write(tempArray, 0, read);
+                                    log.debug("Sent " + totalRead + " of " + apkFile.length() + " bytes");
+                                }
+                                mObjOutStream.flush();
+                                bis.close();
+                            } else if (response == RapidMessages.AS_APP_PRESENT_AC) {
+                                log.debug("Application already registered on clone " + clone.getIp());
+                            }
+                            break;
+
+                        case RapidMessages.AC_OFFLOAD_REQ_AS:
+                            log.debug("Asking VM " + clone.getIp() + " to parallelize the execution");
+
+                            mOutStream.write(RapidMessages.AC_OFFLOAD_REQ_AS);
+
+                            // Send the number of VMs needed.
+                            // Since this is a helper VM, only one clone should be requested.
+                            mObjOutStream.writeInt(1);
+                            mObjOutStream.writeObject(objToExecute);
+                            mObjOutStream.writeObject(methodName);
+                            mObjOutStream.writeObject(pTypes);
+                            mObjOutStream.writeObject(pValues);
+                            mObjOutStream.flush();
+
+                            // This is the response from the clone helper, which is a partial result of the method
+                            // execution. This partial result is stored in an array, and will be later composed
+                            // with the other partial results of the other clones to obtain the total desired
+                            // result to be sent back to the phone.
+                            Object cloneResult = mObjInStream.readObject();
+
+                            ResultContainer container = (ResultContainer) cloneResult;
+
+                            log.debug("Received response from clone ip: " + clone.getIp() + " port: "
+                                    + clone.getPort());
+                            log.debug("Writing in responsesFromServer in position: " + cloneHelperId);
+                            synchronized (responsesFromServers) {
+                                Array.set(responsesFromServers, cloneHelperId, container.functionResult);
+                            }
+                            break;
+
+                        case -1:
+                            closeConnection();
+                            return;
+                    }
+                }
+            } catch (IOException e) {
+                log.error("IOException: " + e);
+            } catch (ClassNotFoundException e) {
+                log.error("ClassNotFoundException: " + e);
+            } finally {
+                closeConnection();
+            }
+        }
+
+        private boolean establishConnection() {
+            try {
+
+                log.debug("Trying to connect to clone " + clone.getIp() + ":" + clone.getPort());
+
+                mSocket = new Socket();
+                mSocket.connect(new InetSocketAddress(clone.getIp(), clone.getPort()), 10 * 1000);
+
+                mOutStream = mSocket.getOutputStream();
+                mInStream = mSocket.getInputStream();
+                mObjOutStream = new ObjectOutputStream(mOutStream);
+                mObjInStream = new DynamicObjectInputStream(mInStream);
+
+                log.debug("Connection established whith clone " + clone.getIp());
+
+                return true;
+            } catch (Exception e) {
+                log.error("Exception not caught properly - " + e);
+                return false;
+            } catch (Error e) {
+                log.error("Error not caught properly - " + e);
+                return false;
+            }
+        }
+
+        private void pingOtherServer() {
+            try {
+                // Send a message to the Server Helper (other server)
+                log.debug("PING other server");
+                mOutStream.write(eu.project.rapid.common.RapidMessages.PING);
+
+                // Read and display the response message sent by server helper
+                int response = mInStream.read();
+
+                if (response == RapidMessages.PONG)
+                    log.debug("PONG from other server: " + clone.getIp() + ":" + clone.getPort());
+                else {
+                    log.debug("Bad Response to Ping - " + response);
+                }
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        }
+
+        private void closeConnection() {
+            RapidUtils.closeQuietly(mObjOutStream);
+            RapidUtils.closeQuietly(mObjInStream);
+            RapidUtils.closeQuietly(mSocket);
         }
     }
 }

@@ -22,7 +22,7 @@ public class ClientListenerClear implements Runnable {
     private Configuration config;
     private ExecutorService threadPool = Executors.newFixedThreadPool(1000);
 
-    public ClientListenerClear(Configuration config) {
+    ClientListenerClear(Configuration config) {
         this.config = config;
     }
 
