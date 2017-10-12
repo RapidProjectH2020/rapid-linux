@@ -12,13 +12,16 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 import java.io.*;
+import java.net.InetSocketAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
-import java.net.UnknownHostException;
 import java.util.ArrayList;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Properties;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -37,18 +40,25 @@ public class AC_RM {
     private static final Logger log = LogManager.getLogger(AC_RM.class.getSimpleName());
 
     private static Configuration config;
-    private Properties sharedPrefs;
-    private Clone vm;
+    private static Properties sharedPrefs;
+    private static Clone vm;
     // private String slamIp;
-    private long myId = -1;
+    private static long myId = -1;
     private final String prevVmFileName = "prevVm.ser"; // The file where the VM will be stored for
     // future use.
-    private String prevVmFilePath; // The full path of the file where the VM will
+    private static String prevVmFilePath; // The full path of the file where the VM will
     // be stored for future use.
     private static boolean registerAsPrev;
-    private String jsonQosParams;
+    private static String jsonQosParams;
 
-    private ArrayList<String> vmmIPs;
+    private static ScheduledThreadPoolExecutor registrationScheduledPool =
+            (ScheduledThreadPoolExecutor) Executors.newScheduledThreadPool(1);
+    // Every 2 minutes check if we have a VM. If not, try to re-register with the DS and SLAM.
+    private static final int FREQUENCY_REGISTRATION = 2 * 60 * 1000;
+    private static boolean registeringWithDs = false;
+    private static boolean registeringWithSlam = false;
+
+    private static ArrayList<String> vmmIPs;
     private static final int vmNrVCPUs = 1; // FIXME: number of CPUs on the VM
     private static final int vmMemSize = 512; // FIXME
     private static final int vmNrGpuCores = 1200; // FIXME
@@ -91,9 +101,9 @@ public class AC_RM {
         new Thread(new ClientHandler(clientSocket)).start();
     }
 
-    private boolean registerWithDsAndSlam() {
+    private synchronized static void registerWithDsAndSlam() {
 
-        boolean registeredWithSlam = false;
+        boolean registeredWithSlam;
 
         if (registerWithDs()) {
             // register with SLAM
@@ -107,8 +117,6 @@ public class AC_RM {
         } else {
             log.error("Could not register with DS");
         }
-
-        return registeredWithSlam;
     }
 
     /**
@@ -116,67 +124,169 @@ public class AC_RM {
      * <p>
      * If the VM is null then ask for a list of SLAMs that can provide a VM. Otherwise notify the DS
      * that we want to connect to the previous VM.
-     *
-     * @throws IOException
-     * @throws UnknownHostException
-     * @throws ClassNotFoundException
      */
     @SuppressWarnings("unchecked")
-    private boolean registerWithDs() {
+    private static boolean registerWithDs() {
         log.info("Registering with DS " + config.getDsIp() + ":" + config.getDsPort());
-        try (Socket dsSocket = new Socket(config.getDsIp(), config.getDsPort());
-             ObjectOutputStream dsOut = new ObjectOutputStream(dsSocket.getOutputStream());
-             ObjectInputStream dsIn = new ObjectInputStream(dsSocket.getInputStream())) {
+        int maxNrTimesToTry = 3;
+        int nrTimesTried = 0;
+        Socket dsSocket = null;
+        boolean connectedWithDs = false;
 
-            if (registerAsPrev) { // Get a new VM
-                log.info("Registering as PREV with ID: " + myId + " with the DS...");
-                dsOut.writeByte(RapidMessages.AC_REGISTER_PREV_DS);
-                dsOut.writeLong(myId);
-            } else { // Register and ask for the previous VM
-                log.info("Registering as NEW with ID:" + myId + " with the DS...");
-                dsOut.writeByte(RapidMessages.AC_REGISTER_NEW_DS);
-                log.info("Sending my ID: " + myId);
-                dsOut.writeLong(myId);
-
-                log.info("Sending VM details...");
-                // FIXME: should not use static values here.
-                dsOut.writeInt(vmNrVCPUs); // send vcpuNum as int
-                dsOut.writeInt(vmMemSize); // send memSize as int
-                dsOut.writeInt(vmNrGpuCores); // send gpuCores as int
-
+        do {
+            registeringWithDs = true;
+            log.info("Registering with DS " + config.getDsIp() + ":" + config.getDsPort());
+            try {
+                dsSocket = new Socket();
+                dsSocket.connect(new InetSocketAddress(config.getDsIp(), config.getDsPort()), 3000);
+                log.info("Connected with DS");
+                connectedWithDs = true;
+            } catch (Exception e) {
+                log.error("Could not connect with the DS: " + e);
+                try {
+                    Thread.sleep(10 * 1000);
+                } catch (InterruptedException e1) {
+                    Thread.currentThread().interrupt();
+                }
             }
+        } while (!connectedWithDs && ++nrTimesTried < maxNrTimesToTry);
 
-            dsOut.flush();
+        if (connectedWithDs) {
+            try (ObjectOutputStream dsOut = new ObjectOutputStream(dsSocket.getOutputStream());
+                 ObjectInputStream dsIn = new ObjectInputStream(dsSocket.getInputStream())) {
 
-            // Receive message format: status (java byte), userId (java long), ipList (java object)
-            byte status = dsIn.readByte();
-            log.info("Return Status from DS: " + (status == RapidMessages.OK ? "OK" : "ERROR"));
-            if (status == RapidMessages.OK) {
-                myId = dsIn.readLong();
-                log.info("New userId is: " + myId);
+                if (registerAsPrev && myId != -1) { // Get a new VM
+                    log.info("Registering as PREV with ID: " + myId + " with the DS...");
+                    dsOut.writeByte(RapidMessages.AC_REGISTER_PREV_DS);
+                    dsOut.writeLong(myId);
+                } else { // Register and ask for the previous VM
+                    log.info("Registering as NEW with ID:" + myId + " with the DS...");
+                    dsOut.writeByte(RapidMessages.AC_REGISTER_NEW_DS);
+                    log.info("Sending my ID: " + myId);
+                    dsOut.writeLong(myId);
 
-                // Read the list of VMMs, which will be sorted based on free resources
-                vmmIPs = (ArrayList<String>) dsIn.readObject();
+                    log.info("Sending VM details...");
+                    // FIXME: should not use static values here.
+                    dsOut.writeInt(vmNrVCPUs); // send vcpuNum as int
+                    dsOut.writeInt(vmMemSize); // send memSize as int
+                    dsOut.writeInt(vmNrGpuCores); // send gpuCores as int
 
-                // Read the SLAM IP and port
-                String slamIp = dsIn.readUTF();
-                int slamPort = dsIn.readInt();
-                config.setSlamIp(slamIp);
-                config.setSlamPort(slamPort);
-                log.info("SLAM address is: " + slamIp + ":" + slamPort);
+                }
 
-                return true;
+                dsOut.flush();
+
+                // Receive message format: status (java byte), userId (java long), ipList (java object)
+                byte status = dsIn.readByte();
+                log.info("Return Status from DS: " + (status == RapidMessages.OK ? "OK" : "ERROR"));
+                if (status == RapidMessages.OK) {
+                    myId = dsIn.readLong();
+                    log.info("New userId is: " + myId);
+
+                    // Read the list of VMMs, which will be sorted based on free resources
+                    vmmIPs = (ArrayList<String>) dsIn.readObject();
+
+                    // Read the SLAM IP and port
+                    String slamIp = dsIn.readUTF();
+                    int slamPort = dsIn.readInt();
+                    config.setSlamIp(slamIp);
+                    config.setSlamPort(slamPort);
+                    log.info("SLAM address is: " + slamIp + ":" + slamPort);
+
+                    return true;
+                }
+            } catch (IOException e) {
+                log.error("Could not connect with the DS: " + e);
+            } catch (ClassNotFoundException e) {
+                log.error("DS sent wrong object instead of array with VMM IPs as strings: " + e);
             }
-        } catch (IOException e) {
-            log.error("Could not connect with the DS: " + e);
-        } catch (ClassNotFoundException e) {
-            log.error("DS sent wrong object instead of array with VMM IPs as strings: " + e);
         }
 
+        registeringWithDs = false;
         return false;
     }
 
-    private void savePrevParameters() {
+
+    /**
+     * @param vmmIp The IP of the VMM to ask for a VM.
+     */
+    private static boolean registerWithSlam(String vmmIp) {
+
+        int maxNrTimesToTry = 3;
+        int nrTimesTried = 0;
+        Socket slamSocket = null;
+        boolean connectedWithSlam = false;
+
+        do {
+            log.info("Registering with SLAM " + config.getSlamIp() + ":" + config.getSlamPort());
+            registeringWithSlam = true;
+            try {
+                slamSocket = new Socket();
+                slamSocket.connect(new InetSocketAddress(config.getSlamIp(), config.getSlamPort()), 5000);
+                log.info("Connected with SLAM");
+                connectedWithSlam = true;
+            } catch (Exception e) {
+                log.error("Could not connect with the SLAM: " + e);
+                try {
+                    Thread.sleep(10 * 1000);
+                } catch (InterruptedException e1) {
+                    Thread.currentThread().interrupt();
+                }
+            }
+        } while (!connectedWithSlam && ++nrTimesTried < maxNrTimesToTry);
+
+        if (connectedWithSlam) {
+            try (ObjectOutputStream oos = new ObjectOutputStream(slamSocket.getOutputStream());
+                 ObjectInputStream ois = new ObjectInputStream(slamSocket.getInputStream())) {
+
+                oos.writeByte(RapidMessages.AC_REGISTER_SLAM);
+                oos.writeLong(myId);
+                oos.writeInt(RapidConstants.OS.LINUX.ordinal());
+                oos.flush();
+
+                // Send the vmmId and vmmPort to the SLAM so it can start the VM
+                oos.writeUTF(vmmIp);
+                oos.writeInt(config.getVmmPort());
+
+                // FIXME: should not use static values here.
+                oos.writeInt(vmNrVCPUs); // send vcpuNum as int
+                oos.writeInt(vmMemSize); // send memSize as int
+                oos.writeInt(vmNrGpuCores); // send gpuCores as int
+                oos.writeUTF(jsonQosParams);
+
+                oos.flush();
+
+                int response = ois.readByte();
+                if (response == RapidMessages.OK) {
+                    log.info("SLAM OK, getting the VM details");
+                    String vmIp = ois.readUTF();
+
+                    vm = new Clone("", vmIp);
+                    vm.setId((int) myId);
+
+                    // Save the userID, etc.
+                    savePrevParameters();
+
+                    // Save the VM for future references.
+                    saveVm();
+
+                    return true;
+                } else if (response == RapidMessages.ERROR) {
+                    log.error("SLAM registration replied with ERROR, VM will be null");
+                } else {
+                    log.error(
+                            "SLAM registration replied with uknown message " + response + ", VM will be null");
+                }
+            } catch (IOException e) {
+                log.error("Could not connect with the SLAM: " + e);
+            }
+        }
+
+        registeringWithSlam = false;
+        return false;
+    }
+
+
+    private static void savePrevParameters() {
         sharedPrefs.setProperty(Constants.USER_ID_KEY, Long.toString(myId));
 
         // The file containing preferences shared by all applications, like userID, etc.
@@ -193,7 +303,7 @@ public class AC_RM {
         }
     }
 
-    private void readPrevVm() {
+    private static void readPrevVm() {
         try (ObjectInputStream ois = new ObjectInputStream(new FileInputStream(prevVmFilePath));) {
 
             vm = (Clone) ois.readObject();
@@ -203,7 +313,7 @@ public class AC_RM {
         }
     }
 
-    private void saveVm() {
+    private static void saveVm() {
         try (ObjectOutputStream oos =
                      new ObjectOutputStream(new BufferedOutputStream(new FileOutputStream(prevVmFilePath)));) {
 
@@ -331,79 +441,6 @@ public class AC_RM {
         return jsonQosParams.toString();
     }
 
-
-    // private void chooseBestSlam(List<String> slamIPs) {
-    // // FIXME Currently just choose the first one.
-    // log.info("Choosing the best SLAM from the list...");
-    // if (slamIPs == null || slamIPs.size() == 0) {
-    // throw new NoSuchElementException("Exptected at least one SLAM, don't know how to proceed!");
-    // } else {
-    // Iterator<String> ipListIterator = slamIPs.iterator();
-    // log.info("Received SLAM IP List: ");
-    // while (ipListIterator.hasNext()) {
-    // log.info(ipListIterator.next());
-    // }
-    //
-    // config.setSlamIp(slamIPs.get(0));
-    // }
-    // }
-
-    /**
-     * @param vmmIp The IP of the VMM to ask for a VM.
-     * @throws IOException
-     * @throws UnknownHostException
-     */
-    private boolean registerWithSlam(String vmmIp) {
-        log.info("Registering with SLAM " + config.getSlamIp() + ":" + config.getSlamPort());
-        try (Socket socket = new Socket(config.getSlamIp(), config.getSlamPort());
-             ObjectOutputStream oos = new ObjectOutputStream(socket.getOutputStream());
-             ObjectInputStream ois = new ObjectInputStream(socket.getInputStream())) {
-
-            oos.writeByte(RapidMessages.AC_REGISTER_SLAM);
-            oos.writeLong(myId);
-            oos.writeInt(RapidConstants.OS.LINUX.ordinal());
-            oos.flush();
-
-            // Send the vmmId and vmmPort to the SLAM so it can start the VM
-            oos.writeUTF(vmmIp);
-            oos.writeInt(config.getVmmPort());
-
-            // FIXME: should not use static values here.
-            oos.writeInt(vmNrVCPUs); // send vcpuNum as int
-            oos.writeInt(vmMemSize); // send memSize as int
-            oos.writeInt(vmNrGpuCores); // send gpuCores as int
-            oos.writeUTF(jsonQosParams);
-
-            oos.flush();
-
-            int response = ois.readByte();
-            if (response == RapidMessages.OK) {
-                log.info("SLAM OK, getting the VM details");
-                String vmIp = ois.readUTF();
-
-                vm = new Clone("", vmIp);
-                vm.setId((int) myId);
-
-                // Save the userID, etc.
-                savePrevParameters();
-
-                // Save the VM for future references.
-                saveVm();
-
-                return true;
-            } else if (response == RapidMessages.ERROR) {
-                log.error("SLAM registration replied with ERROR, VM will be null");
-            } else {
-                log.error(
-                        "SLAM registration replied with uknown message " + response + ", VM will be null");
-            }
-        } catch (IOException e) {
-            log.error("Could not connect with the SLAM: " + e);
-        }
-
-        return false;
-    }
-
     /**
      * Handles the client requests, which are actually applications running on the same machine as the
      * AC_RM is running.
@@ -428,7 +465,7 @@ public class AC_RM {
                  ObjectInputStream ois = new ObjectInputStream(is);
                  ObjectOutputStream oos = new ObjectOutputStream(os)) {
 
-                int command = -1;
+                int command;
                 do {
                     command = is.read();
                     log.info("Received command from app: " + command);
@@ -465,32 +502,24 @@ public class AC_RM {
             log.info("Started server on port " + config.getAcRmPort());
 
             // If it didn't throw an exception it means that this is the first instance of the AC_RM.
-            // This is responsible for registering with the DS.
-
-            boolean registered;
-            long waitToRegister = 2000; // ms
-            int timesTriedRegistering = 0;
-            do {
-                registered = acRm.registerWithDsAndSlam();
-                timesTriedRegistering++;
-
-                if (!registered) {
-                    log.info("Could not register with DS and SLAM, trying after " + waitToRegister + " ms");
-                    try {
-                        Thread.sleep(waitToRegister);
-                    } catch (InterruptedException e) {
-                    }
-
-                    if (timesTriedRegistering >= 3) {
-                        if (registerAsPrev) {
-                            registerAsPrev = false;
-                            timesTriedRegistering = 0;
-                        } else {
-                            waitToRegister *= 2;
+            // This is responsible for registering with the DS and SLAM.
+            registrationScheduledPool.scheduleWithFixedDelay(
+                    new Runnable() {
+                        @Override
+                        public void run() {
+                            if (vm == null) {
+                                log.info("We do not have a VM, registering with the DS and SLAM...");
+                                if (registeringWithDs || registeringWithSlam) {
+                                    log.info("Registration already in progress...");
+                                } else {
+                                    registerWithDsAndSlam();
+                                }
+                            }
                         }
-                    }
-                }
-            } while (!registered);
+                    }, FREQUENCY_REGISTRATION, FREQUENCY_REGISTRATION, TimeUnit.MILLISECONDS
+            );
+
+            registerWithDsAndSlam();
 
             while (true) {
                 Socket clientSocket = serverSocket.accept();
@@ -504,9 +533,14 @@ public class AC_RM {
                 // If this exception is thrown, it means that the port is already in use by a previous
                 // instance of the AC_RM.
                 // The client should just connect to the listening server in that case.
-                log.warn("AC_RM is already running: " + e);
+                log.warn("AC_RM may be already running: " + e);
             } else {
                 e.printStackTrace();
+            }
+        } finally {
+            if (registrationScheduledPool != null) {
+                registrationScheduledPool.shutdown();
+                log.info("The registrationScheduledPool is now shut down");
             }
         }
     }
