@@ -277,12 +277,10 @@ public class DFE {
                 }
                 log.info("------ Finished talking to AC_RM, received userID=" + userID + " and VM=" + vm);
 
-                // // FIXME: Remove the following two lines and use the VM received from the AC_RM.
-                // // Figure out why AC_RM returns VM with IP 127.0.0.1
-                // vm = new Clone("FIXME", "10.0.0.3");
-                // log.info("------ FIXME: temporarely using this VM while trying to solve the AC_RM
-                // problem: "
-                // + vm);
+                 // FIXME: Remove the following two lines and use the VM received from the AC_RM.
+                 // Figure out why AC_RM returns VM with IP 127.0.0.1
+                 vm = new Clone("FIXME", "127.0.0.1");
+                 log.info("------ FIXME: temporarily using this VM while trying to solve the AC_RM problem: " + vm);
 
                 connectionAcRmSuccess = true;
             } catch (IOException e) {
