@@ -46,8 +46,12 @@ public final class Utils {
      * @throws FileNotFoundException
      */
     public static void createDirIfNotExist(String dirFullPath) throws FileNotFoundException {
-        createDirIfNotExist(dirFullPath.substring(0, dirFullPath.lastIndexOf(File.separator)),
-                dirFullPath.substring(dirFullPath.lastIndexOf(File.separator) + 1));
+        if (dirFullPath != null) {
+            createDirIfNotExist(dirFullPath.substring(0, dirFullPath.lastIndexOf(File.separator)),
+                    dirFullPath.substring(dirFullPath.lastIndexOf(File.separator) + 1));
+        } else {
+            log.error("Cannot create dir because given path is null");
+        }
     }
 
     /**

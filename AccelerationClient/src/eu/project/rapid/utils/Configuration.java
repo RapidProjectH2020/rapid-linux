@@ -91,12 +91,10 @@ public final class Configuration {
     private boolean connectSsl = false;
     private int clonePortBandwidthTest = 4321;
 
-    private String TAG;
-
     public Configuration(String callerTag, REGIME regime) {
         this.regime = regime;
-        this.TAG = Configuration.class.getSimpleName() + "-" + callerTag + "-" + regime.toString();
-        log = LogManager.getLogger(this.TAG);
+        String TAG = Configuration.class.getSimpleName() + "-" + callerTag + "-" + regime.toString();
+        log = LogManager.getLogger(TAG);
 
         log.info("Reading the configuration file");
 

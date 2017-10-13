@@ -90,7 +90,9 @@ public class DFE {
         try {
             Utils.createDirIfNotExist(config.getRapidFolder());
         } catch (FileNotFoundException e) {
-            log.error("Could not create folder " + config.getRapidFolder() + ": " + e);
+            log.error("Could not create RAPID folder " + config.getRapidFolder() + ": " + e);
+        } catch (Exception e) {
+            log.error("Exception while creating RAPID folder " + config.getRapidFolder() + ": " + e);
         }
 
         // Get the jar file to send to the AS.
