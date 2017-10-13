@@ -30,11 +30,11 @@ public class AccelerationServer {
     private Configuration config;
 
     // The ID of the user that is requesting this VM.
-    static long userId = -1; // The userId will be given by the VMM
+    private static long userId = -1; // The userId will be given by the VMM
     static long vmId; // The vmId will be assigned by the DS
-    static String vmIp; // The vmIp should be extracted by us
+    private static String vmIp; // The vmIp should be extracted by us
 
-    public AccelerationServer() {
+    private AccelerationServer() {
         log.info("Starting the AS ");
         config = new Configuration(AccelerationServer.class.getSimpleName(), REGIME.AS);
 
@@ -215,7 +215,7 @@ public class AccelerationServer {
      * @param userId the userId to set
      */
     public void setUserId(long userId) {
-        this.userId = userId;
+        AccelerationServer.userId = userId;
     }
 
     public static void main(String[] argv) {

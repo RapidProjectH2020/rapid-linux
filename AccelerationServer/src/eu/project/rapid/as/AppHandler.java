@@ -22,6 +22,7 @@ import java.nio.file.StandardCopyOption;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
@@ -31,7 +32,7 @@ import java.util.jar.JarFile;
  * Currently it handles correctly the normal Java methods.
  * The native libraries are quite tricky. For now I am reusing the same classloader here
  * (implemented as static) for the same application. This allows for proper execution of native functions,
- * but it presents problems if the native library is modified. If that happens, the current classloader will not
+ * but it presents problems if the native library clientIs modified. If that happens, the current classloader will not
  * load the new native library, which means that the offloaded native methods will not be able to run the latest
  * implementation.
  * Also the Java methods will have the same issue, since a class cannot be loaded twice on the same classloader.
@@ -52,10 +53,10 @@ public class AppHandler implements Runnable {
     private Configuration config;
 
     private Socket clientSocket;
-    private InputStream is;
-    private OutputStream os;
-    private DynamicObjectInputStream dOis;
-    private ObjectOutputStream oos;
+    private InputStream clientIs;
+    private OutputStream clientOs;
+    private DynamicObjectInputStream clientDOis;
+    private ObjectOutputStream clientOos;
 
     // Variables related to method execution
     private Object objToExecute;
@@ -63,7 +64,7 @@ public class AppHandler implements Runnable {
     private long jarLength; // the app length in bytes sent by the phone
     private String appFolderPath; // the path where the files for this app are stored
     private File appLibFolder;
-    private String jarFilePath; // the path where the jar file is stored
+    private String jarFilePath; // the path where the jar file clientIs stored
 
     private static Map<String, Integer> apkMap = new ConcurrentHashMap<>(); // appName, apkSize
     private static Map<String, CountDownLatch> apkMapSemaphore = new ConcurrentHashMap<>(); // appName, latch
@@ -92,6 +93,11 @@ public class AppHandler implements Runnable {
     // the clone helpers have cloneId \in [1, nrClones-1]
     private int cloneHelperId = 0;
 
+    // I need this variable for when the DS starts the VM migration.
+    // The AS will let the DS shut down the VM only if this clientIs equal to 0.
+    private static final AtomicInteger nrTasksCurrentlyBeingExecuted = new AtomicInteger(0);
+    private static AtomicBoolean migrationInProgress = new AtomicBoolean(false);
+
     AppHandler(Socket socket, Configuration config) {
 
         this.clientSocket = socket;
@@ -109,24 +115,24 @@ public class AppHandler implements Runnable {
     @Override
     public void run() {
         try {
-            is = clientSocket.getInputStream();
-            os = clientSocket.getOutputStream();
-            dOis = new DynamicObjectInputStream(is);
-            oos = new ObjectOutputStream(os);
+            clientIs = clientSocket.getInputStream();
+            clientOs = clientSocket.getOutputStream();
+            clientDOis = new DynamicObjectInputStream(clientIs);
+            clientOos = new ObjectOutputStream(clientOs);
 
             int command;
             do {
-                command = is.read();
+                command = clientIs.read();
                 log.info("Received command: " + command);
                 switch (command) {
                     case RapidMessages.PING:
-                        os.write(RapidMessages.PING);
+                        clientOs.write(RapidMessages.PING);
                         break;
 
                     case RapidMessages.AC_REGISTER_AS:
                         log.info("Client requesting REGISTER");
-                        jarName = dOis.readUTF();
-                        jarLength = dOis.readLong();
+                        jarName = clientDOis.readUTF();
+                        jarLength = clientDOis.readLong();
                         appFolderPath = this.config.getRapidFolder() + File.separator + jarName;
                         jarFilePath = appFolderPath + File.separator + jarName + ".jar";
 
@@ -137,14 +143,14 @@ public class AppHandler implements Runnable {
                             rapidClassLoader.setAppFolder(appFolderPath);
                         }
                         classLoaders.put(jarName, rapidClassLoader);
-                        dOis.setClassLoader(rapidClassLoader);
+                        clientDOis.setClassLoader(rapidClassLoader);
 
                         if (appExists()) {
                             log.info("Jar file already present");
-                            os.write(RapidMessages.AS_APP_PRESENT_AC);
+                            clientOs.write(RapidMessages.AS_APP_PRESENT_AC);
                         } else {
                             log.info("Jar file not present or old version, should read the jar file");
-                            os.write(RapidMessages.AS_APP_REQ_AC);
+                            clientOs.write(RapidMessages.AS_APP_REQ_AC);
                             receiveJarFile();
                             apkMapSemaphore.get(jarName).countDown();
                         }
@@ -164,16 +170,59 @@ public class AppHandler implements Runnable {
 
                     case RapidMessages.AC_OFFLOAD_REQ_AS:
                         log.info("Client requesting OFFLOAD_EXECUTION");
-                        Object result = retrieveAndExecute();
-                        oos.writeObject(result);
-                        oos.flush();
-                        oos.reset();
+                        synchronized (nrTasksCurrentlyBeingExecuted) {
+                            if (migrationInProgress.get()) {
+                                log.info("VM upgrade in progress, cannot accept new tasks");
+                                // Simply closing the connection will force the client to run tasks locally
+                                closeConnection();
+                                break;
+                            }
+
+                            nrTasksCurrentlyBeingExecuted.incrementAndGet();
+                            log.info("The new task clientIs accepted for execution, total nr of tasks: "
+                                    + nrTasksCurrentlyBeingExecuted.get());
+                        }
+
+                        try {
+                            Object result = retrieveAndExecute();
+                            clientOos.writeObject(result);
+                            clientOos.flush();
+                            clientOos.reset();
+                        } catch (IOException e) {
+                            log.error("Could not send the result back to the client: " + e);
+                        } finally {
+                            synchronized (nrTasksCurrentlyBeingExecuted) {
+                                nrTasksCurrentlyBeingExecuted.decrementAndGet();
+                                nrTasksCurrentlyBeingExecuted.notifyAll();
+                            }
+                        }
+
                         break;
 
-
                     case RapidMessages.CLONE_ID_SEND:
-                        cloneHelperId = is.read();
+                        cloneHelperId = clientIs.read();
                         Utils.writeCloneHelperId(cloneHelperId);
+                        break;
+
+                    case RapidMessages.DS_MIGRATION_VM_AS:
+                        // When the QoS are not respected, the VM will be upgraded.
+                        // In that case, the DS informs the AS, so that the AS can inform the AC.
+                        long userId = clientDOis.readLong();
+                        log.info("The VMM is informing that there will be a VM migration/update, user id = " + userId);
+                        migrationInProgress.getAndSet(true);
+
+                        synchronized (nrTasksCurrentlyBeingExecuted) {
+                            while (nrTasksCurrentlyBeingExecuted.get() > 0) {
+                                try {
+                                    nrTasksCurrentlyBeingExecuted.wait();
+                                } catch (Exception e) {
+                                    log.error("Exception while waiting for no more tasks in execution: " + e);
+                                }
+                            }
+                        }
+                        log.info("No more tasks under execution, informing the VMM that the upgrade can go on...");
+                        clientOos.writeByte(RapidMessages.OK);
+                        clientOos.flush();
                         break;
                 }
             } while (command != -1);
@@ -181,14 +230,18 @@ public class AppHandler implements Runnable {
         } catch (IOException e) {
             log.warn("Client disconnected: " + e);
         } finally {
-            RapidUtils.closeQuietly(oos);
-            RapidUtils.closeQuietly(dOis);
-            RapidUtils.closeQuietly(clientSocket);
+            closeConnection();
         }
     }
 
+    private void closeConnection() {
+        RapidUtils.closeQuietly(clientOos);
+        RapidUtils.closeQuietly(clientDOis);
+        RapidUtils.closeQuietly(clientSocket);
+    }
+
     /**
-     * Extract native libraries for the x86 platform included in the .jar file (which is actually a
+     * Extract native libraries for the x86 platform included in the .jar file (which clientIs actually a
      * zip file).
      * <p>
      * The x86 shared libraries are: libs/library.so inside the jar file. They are extracted from the
@@ -197,12 +250,12 @@ public class AppHandler implements Runnable {
      * offloaded for the first time and used the library, the library was loaded in the jvm. If the
      * client disconnected, the classloader that loaded the library was not unloaded, which means that
      * also the library was not unloaded from the jvm. On consequent offloads of the same app, the
-     * classloader is different, meaning that the library could not be loaded anymore due to the fact
+     * classloader clientIs different, meaning that the library could not be loaded anymore due to the fact
      * that was already loaded by another classloader. But it could not even be used, due to the fact
      * that the classloaders differ.<br>
      * <br>
      * To solve this problem we save the library within a new folder, increasing a sequence number
-     * each time the same app is offloaded. So, the library.so file will be saved as
+     * each time the same app clientIs offloaded. So, the library.so file will be saved as
      * library-1/library.so, library-2/library.so, and so on.
      */
 
@@ -220,7 +273,7 @@ public class AppHandler implements Runnable {
             // Folder where the libraries are extracted
             File[] libsFolders = new File(appFolderPath).listFiles(libsFilter);
             if (libsFolders != null && libsFolders.length > 1) {
-                log.warn("More than on libs folder is present, not clear how proceed now: ");
+                log.warn("More than on libs folder clientIs present, not clear how proceed now: ");
                 for (File f : libsFolders) {
                     log.info("\t" + f.getAbsolutePath());
                 }
@@ -315,13 +368,13 @@ public class AppHandler implements Runnable {
         try {
 
             // Receive the number of VMs needed
-            int nrVMs = dOis.readInt();
-            log.info("The user is asking for " + nrVMs + " VMs");
+            int nrVMs = clientDOis.readInt();
+            log.info("The user clientIs asking for " + nrVMs + " VMs");
             numberOfCloneHelpers--;
             boolean withMultipleClones = numberOfCloneHelpers > 0;
 
             // Get the object
-            objToExecute = dOis.readObject();
+            objToExecute = clientDOis.readObject();
 
             // Get the class of the object, dynamically
             Class<?> objClass = objToExecute.getClass();
@@ -351,12 +404,12 @@ public class AppHandler implements Runnable {
 
             log.info("Read Method");
             // Read the name of the method to be executed
-            methodName = (String) dOis.readObject();
+            methodName = (String) clientDOis.readObject();
 
-            Object tempTypes = dOis.readObject();
+            Object tempTypes = clientDOis.readObject();
             pTypes = (Class[]) tempTypes;
 
-            Object tempValues = dOis.readObject();
+            Object tempValues = clientDOis.readObject();
             pValues = (Object[]) tempValues;
 
             log.info("Run Method " + methodName);
@@ -437,7 +490,7 @@ public class AppHandler implements Runnable {
                     log.info("Current classloader: " + AppHandler.class.getClassLoader());
                     log.info("System classloader: " + ClassLoader.getSystemClassLoader());
                     log.info("Object classloader: " + objToExecute.getClass().getClassLoader());
-                    log.info("dOis classloader: " + dOis.getClassLoader());
+                    log.info("clientDOis classloader: " + clientDOis.getClassLoader());
 
                     Method libLoader = objClass.getMethod("loadLibraries", LinkedList.class);
                     try {
@@ -500,7 +553,7 @@ public class AppHandler implements Runnable {
                 }
             }
 
-            // If this is the main VM send back also the object to execute,
+            // If this clientIs the main VM send back also the object to execute,
             // otherwise the helper VMs don't need to send it back.
             if (cloneHelperId == 0) {
                 return new ResultContainer(objToExecute, result, getObjectDuration, execDuration);
@@ -590,7 +643,7 @@ public class AppHandler implements Runnable {
             int totalRead = 0;
             long remaining = jarLength;
             int read;
-            while ((read = is.read(buffer, 0, (int) Math.min(buffer.length, remaining))) > 0) {
+            while ((read = clientIs.read(buffer, 0, (int) Math.min(buffer.length, remaining))) > 0) {
                 fos.write(buffer, 0, read);
                 totalRead += read;
                 remaining -= read;
@@ -599,8 +652,8 @@ public class AppHandler implements Runnable {
             log.info("Succesfully read the " + totalRead + " bytes of the jar file, extracting now.");
             extractJarFile(appFolder, jarFile);
 
-            // The client is waiting for an ACK that the jar file was correctly received and extracted.
-            os.write(1);
+            // The client clientIs waiting for an ACK that the jar file was correctly received and extracted.
+            clientOs.write(1);
         } catch (FileNotFoundException e) {
             log.error("Could not create jar file: " + e);
         } catch (IOException e) {
@@ -638,7 +691,7 @@ public class AppHandler implements Runnable {
                     while (is.available() > 0) {
                         int read = is.read(b);
                         fos2.write(b, 0, read);
-                        // fos2.write(is.read());
+                        // fos2.write(clientIs.read());
                     }
                     fos2.close();
                     is.close();
@@ -655,7 +708,7 @@ public class AppHandler implements Runnable {
         ClassLoader appLoader = ClassLoader.getSystemClassLoader();
         ClassLoader currentLoader = AppHandler.class.getClassLoader();
         ClassLoader objLoader = objToExecute.getClass().getClassLoader();
-        ClassLoader dOisLoader = dOis.getClassLoader();
+        ClassLoader dOisLoader = clientDOis.getClassLoader();
 
         // ClassLoader[] loaders = new ClassLoader[] {appLoader, currentLoader, objLoader};
         ClassLoader[] loaders = new ClassLoader[]{currentLoader};
@@ -763,8 +816,8 @@ public class AppHandler implements Runnable {
         private ObjectOutputStream mObjOutStream;
         private DynamicObjectInputStream mObjInStream;
 
-        // This id is assigned to the clone helper by the main clone.
-        // It is needed for splitting the input when parallelizing a certain method (see for example
+        // This id clientIs assigned to the clone helper by the main clone.
+        // It clientIs needed for splitting the input when parallelizing a certain method (see for example
         // virusScanning).
         // To not be confused with the id that the AS has read from the config file.
         private int cloneHelperId;
@@ -782,7 +835,7 @@ public class AppHandler implements Runnable {
             try {
 
                 // Try to connect to the VM helper.
-                // If it is not possible to connect stop running.
+                // If it clientIs not possible to connect stop running.
                 if (!establishConnection()) {
                     // Try to close created sockets
                     closeConnection();
@@ -861,7 +914,7 @@ public class AppHandler implements Runnable {
                             mOutStream.write(RapidMessages.AC_OFFLOAD_REQ_AS);
 
                             // Send the number of VMs needed.
-                            // Since this is a helper VM, only one clone should be requested.
+                            // Since this clientIs a helper VM, only one clone should be requested.
                             mObjOutStream.writeInt(1);
                             mObjOutStream.writeObject(objToExecute);
                             mObjOutStream.writeObject(methodName);
@@ -869,8 +922,8 @@ public class AppHandler implements Runnable {
                             mObjOutStream.writeObject(pValues);
                             mObjOutStream.flush();
 
-                            // This is the response from the clone helper, which is a partial result of the method
-                            // execution. This partial result is stored in an array, and will be later composed
+                            // This clientIs the response from the clone helper, which clientIs a partial result of the method
+                            // execution. This partial result clientIs stored in an array, and will be later composed
                             // with the other partial results of the other clones to obtain the total desired
                             // result to be sent back to the phone.
                             Object cloneResult = mObjInStream.readObject();
