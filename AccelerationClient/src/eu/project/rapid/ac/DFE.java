@@ -1,9 +1,11 @@
 package eu.project.rapid.ac;
 
+import eu.project.rapid.ac.db.DBCache;
 import eu.project.rapid.ac.profilers.NetworkProfiler;
 import eu.project.rapid.ac.profilers.Profiler;
 import eu.project.rapid.ac.rm.AC_RM;
 import eu.project.rapid.common.Clone;
+import eu.project.rapid.common.RapidConstants.COMM_TYPE;
 import eu.project.rapid.common.RapidConstants.ExecLocation;
 import eu.project.rapid.common.RapidConstants.REGIME;
 import eu.project.rapid.common.RapidMessages;
@@ -18,15 +20,12 @@ import java.io.*;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.net.InetAddress;
+import java.net.InetSocketAddress;
 import java.net.Socket;
-import java.net.UnknownHostException;
 import java.security.CodeSource;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.concurrent.BlockingDeque;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.LinkedBlockingDeque;
+import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
@@ -53,20 +52,15 @@ public class DFE {
     private String jarName; // The jar name without ".jar" extension
     private long jarSize;
     private File jarFile;
-    static boolean onLine;
 
-    // Socket and streams with the VM
     private Clone vm;
-    private Socket vmSocket;
-    private InputStream vmIs;
-    private OutputStream vmOs;
-    private ObjectOutputStream vmOos;
-    private ObjectInputStream vmOis;
+    private static COMM_TYPE commType = COMM_TYPE.SSL;
 
     private long prepareDataDuration = -1;
 
     private static boolean isDFEActive = false;
     private static final int nrTaskRunners = 3;
+    private static CountDownLatch waitForTaskRunners;
     private static ExecutorService threadPool;
     private static BlockingDeque<Task> tasks = new LinkedBlockingDeque<>();
     private static AtomicInteger taskId = new AtomicInteger();
@@ -85,6 +79,7 @@ public class DFE {
 
         config = new Configuration(DFE.class.getSimpleName(), REGIME.AC);
         threadPool = Executors.newFixedThreadPool(nrTaskRunners);
+        waitForTaskRunners = new CountDownLatch(nrTaskRunners);
 
         // Create the folder where the client apps will keep their data.
         try {
@@ -110,9 +105,46 @@ public class DFE {
         } else {
             this.vm = vm;
         }
+        config.setVm(this.vm);
+
+        // FIXME uncomment this (if it's commented). Commented just to perform quick tests.
+        NetworkProfiler.startNetworkMonitoring(config);
+
+        // Start waiting for the network profiling to be finished.
+        // Wait maximum for 10 seconds and then give up, since something could have gone wrong.
+        long startWaiting = System.currentTimeMillis();
+        while (NetworkProfiler.rtt == NetworkProfiler.rttInfinite
+                || NetworkProfiler.lastUlRate == -1 || NetworkProfiler.lastDlRate == -1) {
+
+            if ((System.currentTimeMillis() - startWaiting) > 10 * 1000) {
+                log.warn("Too much time for the network profiling to finish, postponing for later.");
+                break;
+            }
+
+            try {
+                Thread.sleep(1000);
+                log.debug("Waiting for network profiling to finish...");
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        }
+        log.debug("Network profiling finished: rtt=" +
+                NetworkProfiler.rtt + ", ulRate=" + NetworkProfiler.lastUlRate +
+                ", dlRate=" + NetworkProfiler.lastDlRate);
+
+        // Start the TaskRunner threads that will handle the task dispatching process.
+        for (int i = 0; i < nrTaskRunners; i++) {
+            threadPool.submit(new TaskRunner(i));
+        }
+        try {
+            waitForTaskRunners.await();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+        log.info("TaskRunners started successfully");
 
         // Trigger the registration process with the VM.
-        establishConnection();
+//        establishConnection();
     }
 
     private void createJarFile() {
@@ -162,96 +194,6 @@ public class DFE {
         return result;
     }
 
-    private boolean connectWitAs() {
-        try {
-            log.info("Connecting with VM in clear...");
-            vmSocket = new Socket(vm.getIp(), vm.getPort());
-            vmOs = vmSocket.getOutputStream();
-            vmIs = vmSocket.getInputStream();
-            vmOos = new ObjectOutputStream(vmOs);
-            vmOis = new ObjectInputStream(vmIs);
-
-            return true;
-
-        } catch (IOException e) {
-            log.error("Could not connect to VM: " + e);
-            return false;
-        }
-    }
-
-    private boolean connectWitAsSsl() {
-        log.info("Connecting with VM using SSL...");
-
-        try {
-            // Creating Client Sockets
-            vmSocket = config.getSslFactory().createSocket(vm.getIp(), vm.getSslPort());
-
-            // Initializing the streams for Communication with the Server
-            vmOs = vmSocket.getOutputStream();
-            vmIs = vmSocket.getInputStream();
-            vmOos = new ObjectOutputStream(vmOs);
-            vmOis = new ObjectInputStream(vmIs);
-
-            return true;
-
-        } catch (Exception e) {
-            System.out.println("Error while connecting with SSL with the VM: " + e);
-            e.printStackTrace();
-            return false;
-        }
-    }
-
-    private void registerWithAs(InputStream is, OutputStream os, ObjectOutputStream oos) {
-
-        try {
-            os.write(RapidMessages.AC_REGISTER_AS);
-            oos.writeUTF(jarName);
-            oos.writeLong(jarSize);
-            oos.flush();
-            int response = is.read();
-            if (response == RapidMessages.AS_APP_PRESENT_AC) {
-                log.info("The app is already present on the AS, do nothing.");
-            } else if (response == RapidMessages.AS_APP_REQ_AC) {
-                log.info("Should send the app to the AS");
-                sendApp(is, os);
-            }
-        } catch (IOException e) {
-            log.error("Could not send message to VM: " + e);
-        }
-    }
-
-    /**
-     * Send the jar file to the AS
-     */
-    private void sendApp(InputStream is, OutputStream os) {
-
-        log.info("Sending jar file " + jarFilePath + " to the AS");
-        try (FileInputStream fis = new FileInputStream(jarFile)) {
-            byte[] buffer = new byte[4096];
-            int totalRead = 0;
-            int read;
-            while ((read = fis.read(buffer)) > -1) {
-                os.write(buffer, 0, read);
-                totalRead += read;
-            }
-            is.read();
-            log.info("----- Successfully sent the " + totalRead + " bytes of the jar file.");
-        } catch (FileNotFoundException e) {
-            log.error("Could not read the jar file: " + e);
-        } catch (IOException e) {
-            log.error("Error while reading the jar file: " + e);
-        }
-    }
-
-    /**
-     * Close the connection with the VM.
-     */
-    private void closeConnection() {
-        RapidUtils.closeQuietly(vmOis);
-        RapidUtils.closeQuietly(vmOos);
-        RapidUtils.closeQuietly(vmSocket);
-    }
-
     /**
      * Initialize the variables that were stored by previous executions, e.g. the userID, the VM to
      * connect to, etc. Usually these variables will be provided by the AC_RM.
@@ -279,8 +221,8 @@ public class DFE {
                 }
                 log.info("------ Finished talking to AC_RM, received userID=" + userID + " and VM=" + vm);
 
-                 // FIXME: Remove the following two lines and use the VM received from the AC_RM.
-                 // Figure out why AC_RM returns VM with IP 127.0.0.1
+                // FIXME: Remove the following two lines and use the VM received from the AC_RM.
+                // Figure out why AC_RM returns VM with IP 127.0.0.1
 //                 vm = new Clone("FIXME", "127.0.0.1");
 //                 log.info("------ FIXME: temporarily using this VM while trying to solve the AC_RM problem: " + vm);
 
@@ -298,58 +240,32 @@ public class DFE {
         return vm;
     }
 
-    private void establishConnection() {
-        if (vm == null) {
-            log.warn("It was not possible to get a VM, only local execution will be possible.");
-        } else {
-            config.setVm(vm);
-            log.info("Received VM " + vm + " from AC_RM, connecting now...");
-
-            if (config.isConnectSsl() && vm.isCryptoPossible()) {
-                onLine = connectWitAsSsl();
-            }
-
-            if (!onLine) {
-                log.error("It was not possible to connect with the VM using SSL, connecting in clear...");
-                onLine = connectWitAs();
-            }
-
-            if (onLine) {
-                log.info("Connected to VM");
-
-                // FIXME uncomment this (if it's commented). Commented just to perform quick tests.
-                NetworkProfiler.startNetworkMonitoring(config);
-
-                // Start waiting for the network profiling to be finished.
-                // Wait maximum for 10 seconds and then give up, since something could have gone wrong.
-                long startWaiting = System.currentTimeMillis();
-                while (NetworkProfiler.rtt == NetworkProfiler.rttInfinite
-                        || NetworkProfiler.lastUlRate == -1 || NetworkProfiler.lastDlRate == -1) {
-
-                    if ((System.currentTimeMillis() - startWaiting) > 10 * 1000) {
-                        log.warn("Too much time for the network profiling to finish, postponing for later.");
-                        break;
-                    }
-
-                    try {
-                        Thread.sleep(1000);
-                        log.debug("Waiting for network profiling to finish...");
-                    } catch (InterruptedException e) {
-                        Thread.currentThread().interrupt();
-                    }
-                }
-                log.debug("Network profiling finished: rtt=" +
-                        NetworkProfiler.rtt + ", ulRate=" + NetworkProfiler.lastUlRate +
-                        ", dlRate=" + NetworkProfiler.lastDlRate);
-                registerWithAs(vmIs, vmOs, vmOos);
-
-                // Start 10 TaskRunner threads that will handle the task dispatching process.
-                for (int i = 0; i < nrTaskRunners; i++) {
-                    threadPool.submit(new TaskRunner(i));
-                }
-            }
-        }
-    }
+//    private void establishConnection() {
+//        if (vm == null) {
+//            log.warn("It was not possible to get a VM, only local execution will be possible.");
+//        } else {
+//            config.setVm(vm);
+//            log.info("Received VM " + vm + " from AC_RM, connecting now...");
+//
+//            if (config.isConnectSsl() && vm.isCryptoPossible()) {
+//                onLine = connectWitAsSsl();
+//            }
+//
+//            if (!onLine) {
+//                log.error("It was not possible to connect with the VM using SSL, connecting in clear...");
+//                onLine = connectWitAs();
+//            }
+//
+//
+//            if (onLine) {
+//                log.info("Connected to VM");
+//
+//
+//
+//            }
+//
+//        }
+//    }
 
     /**
      * Start the common RM component of all application clients.
@@ -447,6 +363,19 @@ public class DFE {
 
     private class TaskRunner implements Runnable {
         private final String TAG;
+        private boolean onLineClear = false;
+        private boolean onLineSSL = false;
+        // Socket and streams with the VM
+        private Socket vmSocket;
+        private InputStream vmIs;
+        private OutputStream vmOs;
+        private ObjectOutputStream vmOos;
+        private ObjectInputStream vmOis;
+
+        ScheduledThreadPoolExecutor vmConnectionScheduledPool =
+                (ScheduledThreadPoolExecutor) Executors.newScheduledThreadPool(1);
+        // Every two minutes check if we need to reconnect to the VM
+        static final int FREQUENCY_VM_CONNECTION = 2 * 60 * 1000;
 
         TaskRunner(int id) {
             TAG = "DFE-TaskRunner-" + id + " ";
@@ -454,42 +383,215 @@ public class DFE {
 
         @Override
         public void run() {
-            try (Socket s = new Socket(vm.getIp(), vm.getPort());
-                 OutputStream os = s.getOutputStream();
-                 InputStream is = s.getInputStream();
-                 ObjectOutputStream oos = new ObjectOutputStream(os);
-                 ObjectInputStream ois = new ObjectInputStream(is)) {
 
-                // I know that the DFE main thread has already sent the JAR file.
-                // However, I need to tell the listening threads which application is being connected,
-                // so that they can load the classes and libraries.
-                registerWithAs(is, os, oos);
-
-                while (true) {
-                    try {
-                        log.info(TAG + "Waiting for task...");
-                        Task task = tasks.take();
-
-                        log.info(TAG + "Got a task, executing...");
-                        Object result = runTask(task, os, ois, oos);
-                        log.info(TAG + "Task with id=" + task.id +
-                                " finished execution, putting result on the resultMap...");
-                        tasksResultsMap.get(task.id).put(result != null ? result : new Object());
-                        log.info(TAG + "Result inserted on the resultMap.");
-                    } catch (InterruptedException e) {
-                        if (!isDFEActive) {
-                            break;
-                        } else {
-                            Thread.currentThread().interrupt();
+            registerWithVm();
+            // Schedule some periodic reconnections with the VM, just in case we lost the connection.
+            vmConnectionScheduledPool.scheduleWithFixedDelay(
+                    new Runnable() {
+                        @Override
+                        public void run() {
+                            registerWithVm();
                         }
+                    }, FREQUENCY_VM_CONNECTION, FREQUENCY_VM_CONNECTION, TimeUnit.MILLISECONDS
+            );
+
+            waitForTaskRunners.countDown();
+            log.info("CountDownLatch zero - Now the worker threads can start running tasks");
+
+            while (true) {
+                try {
+                    log.info(TAG + "Waiting for task...");
+                    Task task = tasks.take();
+
+                    log.info(TAG + "Got a task, executing...");
+                    Object result = runTask(task, vmOs, vmOis, vmOos);
+                    log.info(TAG + "Task with id=" + task.id +
+                            " finished execution, putting result on the resultMap...");
+                    tasksResultsMap.get(task.id).put(result != null ? result : new Object());
+                    log.info(TAG + "Result inserted on the resultMap.");
+                } catch (InterruptedException e) {
+                    if (!isDFEActive) {
+                        log.warn("The DFE is destroyed, exiting...");
+                        vmConnectionScheduledPool.shutdownNow();
+                        break;
+                    } else {
+                        Thread.currentThread().interrupt();
                     }
                 }
-
-            } catch (UnknownHostException e) {
-                log.error(TAG + "UnknownHostException while connecting: " + e);
-            } catch (IOException e) {
-                log.error(TAG + "IOException while connecting: " + e);
             }
+        }
+
+        private void registerWithVm() {
+            log.debug("Registering with the VM...");
+
+            if (onLineClear || onLineSSL) {
+                log.info("We are already connected to the VM, no need for reconnection.");
+                return;
+            }
+
+            if (vm == null) {
+                log.debug("The VM is null, aborting VM registration.");
+                return;
+            }
+
+            // In case of reconnecting with the VM, always try to do that using SSL, if possible.
+            if (config.isCryptoInitialized()) {
+                commType = COMM_TYPE.SSL;
+            }
+
+            if (commType == COMM_TYPE.CLEAR) {
+                establishClearConnection();
+            } else { // (commType == COMM_TYPE.SSL)
+                if (!establishSslConnection()) {
+                    log.warn("Setting commType to CLEAR");
+                    commType = COMM_TYPE.CLEAR;
+                    establishClearConnection();
+                }
+            }
+
+            // If the connection was successful then try to send the app to the clone
+            if (onLineClear || onLineSSL) {
+                log.info("The communication type established with the clone is: " + commType);
+                registerWithAs(vmIs, vmOs, vmOos);
+            } else {
+                log.error("Could not register with the VM");
+            }
+        }
+
+        /**
+         * Set up streams for the socket connection, perform initial communication with the clone.
+         */
+        private boolean establishClearConnection() {
+            try {
+                long sTime = System.nanoTime();
+
+                log.info("Connecting in CLEAR with AS on: " + vm.getIp() + ":" + vm.getPort());
+                vmSocket = new Socket();
+                vmSocket.connect(new InetSocketAddress(vm.getIp(), vm.getPort()), 5 * 1000);
+
+                vmOs = vmSocket.getOutputStream();
+                vmIs = vmSocket.getInputStream();
+                vmOos = new ObjectOutputStream(vmOs);
+                vmOis = new ObjectInputStream(vmIs);
+
+                long dur = System.nanoTime() - sTime;
+
+                log.info("Socket and streams set-up time - " + dur / 1000000 + "ms");
+                return onLineClear = true;
+
+            } catch (Exception e) {
+                fallBackToLocalExecution("Connection setup with the VM failed - " + e);
+            } finally {
+                onLineSSL = false;
+            }
+            return onLineClear = false;
+        }
+
+        private boolean establishSslConnection() {
+            log.info("Connecting with VM using SSL...");
+
+            if (!config.isCryptoInitialized()) {
+                log.error("Crypto keys not loaded, cannot perform SSL connection!");
+                return false;
+            }
+
+            try {
+                // Creating Client Sockets
+                vmSocket = config.getSslFactory().createSocket();
+                vmSocket.connect(new InetSocketAddress(vm.getIp(), vm.getSslPort()), 5 * 1000);
+                log.info("SSL Socket created with the VM");
+
+                // Initializing the streams for Communication with the Server
+                vmOs = vmSocket.getOutputStream();
+                vmIs = vmSocket.getInputStream();
+                vmOos = new ObjectOutputStream(vmOs);
+                vmOis = new ObjectInputStream(vmIs);
+
+                return onLineSSL = true;
+
+            } catch (Exception e) {
+                System.out.println("Error while connecting with SSL with the VM: " + e);
+//                e.printStackTrace();
+            } finally {
+                onLineClear = false;
+            }
+
+            return onLineSSL = false;
+        }
+
+        private void fallBackToLocalExecution(String message) {
+            log.error(message);
+            onLineClear = onLineSSL = false;
+        }
+
+        private void registerWithAs(InputStream is, OutputStream os, ObjectOutputStream oos) {
+
+            try {
+                os.write(RapidMessages.AC_REGISTER_AS);
+                oos.writeUTF(jarName);
+                oos.writeLong(jarSize);
+                oos.flush();
+                int response = is.read();
+                if (response == RapidMessages.AS_APP_PRESENT_AC) {
+                    log.info("The app is already present on the AS, do nothing.");
+                } else if (response == RapidMessages.AS_APP_REQ_AC) {
+                    log.info("Should send the app to the AS");
+                    sendApp(is, os);
+                }
+            } catch (IOException e) {
+                log.error("Could not send message to VM: " + e);
+            }
+        }
+
+        /**
+         * Send the jar file to the AS
+         */
+        private void sendApp(InputStream is, OutputStream os) {
+
+            log.info("Sending jar file " + jarFilePath + " to the AS");
+            try (FileInputStream fis = new FileInputStream(jarFile)) {
+                byte[] buffer = new byte[4096];
+                int totalRead = 0;
+                int read;
+                while ((read = fis.read(buffer)) > -1) {
+                    os.write(buffer, 0, read);
+                    totalRead += read;
+                }
+                is.read();
+                log.info("----- Successfully sent the " + totalRead + " bytes of the jar file.");
+            } catch (FileNotFoundException e) {
+                log.error("Could not read the jar file: " + e);
+            } catch (IOException e) {
+                log.error("Error while reading the jar file: " + e);
+            }
+        }
+
+        /**
+         * Close the connection with the VM.
+         */
+        private void closeConnection() {
+            RapidUtils.closeQuietly(vmOis);
+            RapidUtils.closeQuietly(vmOos);
+            RapidUtils.closeQuietly(vmSocket);
+        }
+
+        /**
+         * @param appName    The application name.
+         * @param methodName The current method that we want to offload from this application.<br>
+         *                   Different methods of the same application will have a different set of parameters.
+         * @return The execution location which can be one of: LOCAL, REMOTE.<br>
+         */
+        private ExecLocation findExecLocation(String appName, String methodName) {
+            log.info("Finding exec location for user choice: " + userChoice +
+                    ", online: " + (onLineClear || onLineSSL));
+            if ((onLineClear || onLineSSL)) {
+                if (userChoice == ExecLocation.DYNAMIC) {
+                    return dse.findExecLocationDbCache(appName, methodName);
+                } else {
+                    return userChoice;
+                }
+            }
+            return ExecLocation.LOCAL;
         }
 
         private Object runTask(Task task, OutputStream os, ObjectInputStream ois, ObjectOutputStream oos) {
@@ -691,12 +793,11 @@ public class DFE {
         }
     }
 
-
     public void destroy() {
         isDFEActive = false;
         threadPool.shutdownNow();
         instance = null;
-        closeConnection();
+        DBCache.saveDbCache();
     }
 
     /**
@@ -732,6 +833,7 @@ public class DFE {
 
     /**
      * Choose if connection should be encrypted or not.
+     *
      * @param encrypted true if connection should be encrypted, false if connection should be cleartext.
      */
     public void setConnEncrypted(boolean encrypted) {
