@@ -69,7 +69,8 @@ public class AppHandler implements Runnable {
     private static Map<String, Integer> apkMap = new ConcurrentHashMap<>(); // appName, apkSize
     private static Map<String, CountDownLatch> apkMapSemaphore = new ConcurrentHashMap<>(); // appName, latch
     private static final Object syncAppExistsObject = new Object();
-    private static final Object syncAddLibsObject = new Object();
+    private static final Object syncRegistrationObject = new Object();
+    private static final Object syncLibrariesExtractObject = new Object();
 
     private LinkedList<File> libraries;
     private LinkedList<File> librariesSorted; // Sorted in dependency order
@@ -136,14 +137,19 @@ public class AppHandler implements Runnable {
                         appFolderPath = this.config.getRapidFolder() + File.separator + jarName;
                         jarFilePath = appFolderPath + File.separator + jarName + ".jar";
 
-                        RapidClassLoader rapidClassLoader = classLoaders.get(jarName);
-                        if (rapidClassLoader == null) {
-                            rapidClassLoader = new RapidClassLoader(appFolderPath);
-                        } else {
-                            rapidClassLoader.setAppFolder(appFolderPath);
+                        synchronized (syncRegistrationObject) {
+                            log.info("Taking the RapidClassloader for application: " + jarName);
+                            RapidClassLoader rapidClassLoader = classLoaders.get(jarName);
+                            if (rapidClassLoader == null) {
+                                rapidClassLoader = new RapidClassLoader(appFolderPath);
+                                log.info("Created new RapidClassloader for application: " + jarName + ", " + rapidClassLoader);
+                            } else {
+                                rapidClassLoader.setAppFolder(appFolderPath);
+                                log.info("Updated the RapidClassloader for application: " + jarName + ", " + rapidClassLoader);
+                            }
+                            classLoaders.put(jarName, rapidClassLoader);
+                            clientDOis.setClassLoader(rapidClassLoader);
                         }
-                        classLoaders.put(jarName, rapidClassLoader);
-                        clientDOis.setClassLoader(rapidClassLoader);
 
                         if (appExists()) {
                             log.info("Jar file already present");
@@ -161,7 +167,6 @@ public class AppHandler implements Runnable {
                         } catch (InterruptedException e) {
                             Thread.currentThread().interrupt();
                         }
-
 
                         addLibraries();
                         calculateLibDependencies();
@@ -261,7 +266,8 @@ public class AppHandler implements Runnable {
 
     @SuppressWarnings("unchecked")
     private void addLibraries() {
-        synchronized (syncAddLibsObject) {
+        synchronized (syncLibrariesExtractObject) {
+
             log.info("Extracting native libraries...");
             Long startTime = System.nanoTime();
 
@@ -273,7 +279,7 @@ public class AppHandler implements Runnable {
             // Folder where the libraries are extracted
             File[] libsFolders = new File(appFolderPath).listFiles(libsFilter);
             if (libsFolders != null && libsFolders.length > 1) {
-                log.warn("More than on libs folder clientIs present, not clear how proceed now: ");
+                log.warn("More than one libs folder client is present, not clear how proceed now: ");
                 for (File f : libsFolders) {
                     log.info("\t" + f.getAbsolutePath());
                 }
@@ -315,8 +321,7 @@ public class AppHandler implements Runnable {
                 log.info("No libs* folder present, no shared libraries to load.");
             }
 
-            log.info(
-                    "Duration of creating libraries: " + ((System.nanoTime() - startTime) / 1000000) + "ms");
+            log.info("Duration of creating libraries: " + ((System.nanoTime() - startTime) / 1000000) + "ms");
         }
     }
 
