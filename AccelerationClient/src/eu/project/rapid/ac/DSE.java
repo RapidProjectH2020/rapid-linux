@@ -64,21 +64,22 @@ class DSE {
     }
 
     /**
-     * @param appName
-     * @param methodName
-     * @param currUlRate
-     * @param currDlRate
+     * @param appName The name of the application, usually is the name of the jar file.
+     * @param methodName The name of the method.
+     * @param currUlRate Current upload data rate towards the VM.
+     * @param currDlRate Current download data rate towards the VM.
      * @return <b>True</b> if the method should be executed remotely<br>
      * <b>False</b> otherwise.
      */
     private boolean shouldOffloadDBCache(String appName, String methodName, int currUlRate,
                                          int currDlRate) {
 
-        log.info("Trying to decide using DB cache where to execute the method: appName=" + appName
+        log.info("Deciding exec location for appName=" + appName
                 + ", methodName=" + methodName + ", currUlRate=" + currUlRate + ", currDlRate="
                 + currDlRate);
-        log.info(String.format("DB cache has %d entries and %d measurements", dbCache.size(),
-                dbCache.nrElements()));
+        log.info(String.format("DB cache has %d entries and %d measurements in total.",
+                dbCache.size(), dbCache.nrElements()));
+
 
         // Variables needed for the local executions
         int nrLocalExec;
@@ -91,16 +92,12 @@ class DSE {
         long meanDurRemote;
 
         // Check if the method has been executed LOCALLY in previous runs
-        // long t0 = System.currentTimeMillis();
-        Deque<DBEntry> localResults = dbCache.getAllEntriesFilteredOn(appName, methodName, "LOCAL");
+        Deque<DBEntry> localResults = dbCache.getAllEntriesFilteredOn(appName, methodName, ExecLocation.LOCAL);
         nrLocalExec = localResults.size();
 
         // Check if the method has been executed REMOTELY in previous runs
-        Deque<DBEntry> remoteResults = dbCache.getAllEntriesFilteredOn(appName, methodName, "REMOTE");
+        Deque<DBEntry> remoteResults = dbCache.getAllEntriesFilteredOn(appName, methodName, ExecLocation.REMOTE);
         nrRemoteExec = remoteResults.size();
-        //
-        // long dur = System.currentTimeMillis() - t0;
-        // log.info("DB access time for local and remote queries: " + dur + " ms");
 
         // DECISION 1
         // If the number of previous remote executions is zero and the current connection is good
@@ -187,10 +184,10 @@ class DSE {
                 case LOCAL:
                     log.info("Decision 2: Too many local executions in a row.");
                     if (currUlRate > MIN_UL_RATE_OFFLOAD_1_TIME && currDlRate > MIN_DL_RATE_OFFLOAD_1_TIME) {
-                        log.info("Decision 2->1: No previous remote executions. Good connectivity.");
+                        log.info("Decision 2->1: Good connectivity, decided to offload.");
                         return true;
                     } else {
-                        log.info("Decision 2->1: No previous remote executions. Bad connectivity.");
+                        log.info("Decision 2->1: Bad connectivity, decided to not offload.");
                         return false;
                     }
                 default:

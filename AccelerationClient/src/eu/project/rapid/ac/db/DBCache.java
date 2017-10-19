@@ -1,6 +1,7 @@
 package eu.project.rapid.ac.db;
 
 import eu.project.rapid.ac.DFE;
+import eu.project.rapid.common.RapidConstants.ExecLocation;
 import eu.project.rapid.utils.Constants;
 import eu.project.rapid.utils.Utils;
 import org.apache.logging.log4j.LogManager;
@@ -123,8 +124,7 @@ public class DBCache {
      * @param execLocation
      * @return
      */
-    public Deque<DBEntry> getAllEntriesFilteredOn(String appName, String methodName,
-                                                  String execLocation) {
+    public Deque<DBEntry> getAllEntriesFilteredOn(String appName, String methodName, ExecLocation execLocation) {
 
         assert dbMap != null;
 
@@ -153,8 +153,8 @@ public class DBCache {
      * @param networkSubtype
      * @return
      */
-    public Deque<DBEntry> getAllEntriesFilteredOn(String appName, String methodName,
-                                                  String execLocation, String networkType, String networkSubtype) {
+    public Deque<DBEntry> getAllEntriesFilteredOn(String appName, String methodName, ExecLocation execLocation,
+                                                  String networkType, String networkSubtype) {
 
         assert dbMap != null;
 
