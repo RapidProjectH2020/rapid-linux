@@ -597,7 +597,7 @@ public class DFE {
         private Object runTask(Task task, OutputStream os, ObjectInputStream ois, ObjectOutputStream oos) {
             Object result = null;
 
-            ExecLocation execLocation = dse.findExecLocationDbCache(jarName, task.m.getName());
+            ExecLocation execLocation = findExecLocation(jarName, task.m.getName());
             if (execLocation.equals(ExecLocation.LOCAL)) {
                 log.info(TAG + "Should run the method locally...");
                 result = executeLocally(task);
@@ -826,9 +826,6 @@ public class DFE {
      */
     public void setUserChoice(ExecLocation userChoice) {
         this.userChoice = userChoice;
-        if (dse != null) {
-            dse.setUserChoice(userChoice);
-        }
     }
 
     /**

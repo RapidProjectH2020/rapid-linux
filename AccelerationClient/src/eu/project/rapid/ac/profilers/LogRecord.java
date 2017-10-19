@@ -67,7 +67,7 @@ public class LogRecord {
      */
     void save() {
         logRecordTime = System.currentTimeMillis();
-        log.info(this.toString());
+        log.info("Saving: " + this.toString());
         saveToFile();
         saveToDbCache();
     }

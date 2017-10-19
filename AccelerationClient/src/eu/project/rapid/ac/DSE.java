@@ -14,10 +14,9 @@ import java.util.Deque;
  *
  * @author sokol
  */
-public class DSE {
+class DSE {
 
     private static DSE instance;
-    private ExecLocation userChoice = ExecLocation.DYNAMIC;
 
     private static final boolean VERBOSE_LOG = false;
 
@@ -259,28 +258,21 @@ public class DSE {
         return Math.sqrt((ul2 - ul1) * (ul2 - ul1) + (dl2 - dl1) * (dl2 - dl1));
     }
 
-    /**
-     * @return the userChoice
-     */
-    public ExecLocation getUserChoice() {
-        return userChoice;
-    }
-
-    /**
-     * @param userChoice the userChoice to set
-     */
-    void setUserChoice(ExecLocation userChoice) {
-        this.userChoice = userChoice;
-    }
-
-
     ExecLocation getLastExecLocation(String methodName) {
         Deque<DBEntry> results = dbCache.getAllEntriesFilteredOn(appName, methodName);
+        if (results.size() == 0) {
+            log.warn("There is no execution history for: " + appName + ":" + methodName);
+            return ExecLocation.DYNAMIC;
+        }
         return results.getFirst().getExecLocation();
     }
 
     long getLastExecDuration(String methodName) {
         Deque<DBEntry> results = dbCache.getAllEntriesFilteredOn(appName, methodName);
+        if (results.size() == 0) {
+            log.warn("There is no execution history for: " + appName + ":" + methodName);
+            return -1;
+        }
         return results.getFirst().getExecDuration();
     }
 }
