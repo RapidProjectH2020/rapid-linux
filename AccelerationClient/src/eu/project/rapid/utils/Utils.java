@@ -89,8 +89,8 @@ public final class Utils {
                     }
                 }
             }
-            if (file.delete()) {
-                log.info(file.getAbsolutePath() + " deleted.");
+            if (!file.delete()) {
+                log.warn(file.getAbsolutePath() + " could not be deleted!");
             }
         }
     }
