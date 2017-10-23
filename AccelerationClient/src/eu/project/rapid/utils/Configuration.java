@@ -136,20 +136,8 @@ public final class Configuration {
                     rapidFolder = userHomeFolder + File.separator + rapidFolder;
                 }
 
-                rapidLogFile =
-                        props.getProperty(Constants.LOG_FILE_NAME_KEY, Constants.LOG_FILE_NAME_DEFAULT);
+                rapidLogFile = props.getProperty(Constants.LOG_FILE_NAME_KEY, Constants.LOG_FILE_NAME_DEFAULT);
                 rapidLogFile = rapidFolder + File.separator + rapidLogFile;
-
-                // DB variables
-                // rapidDbName = props.getProperty(Constants.DB_FILE_NAME_KEY,
-                // Constants.DB_FILE_NAME_DEFAULT);
-                // dbDriver =
-                // props.getProperty(Constants.DB_JDBC_DRIVER_KEY, Constants.DB_JDBC_DRIVER_DEFAULT);
-                // dbUrl = props.getProperty(Constants.DB_URL_KEY, Constants.DB_URL_DEFAULT);
-                // // User and pass should not be null, otherwise DB will not work
-                // dbUser = props.getProperty(Constants.DB_USER_KEY).trim();
-                // dbPass = props.getProperty(Constants.DB_PASS_KEY).trim();
-                // assert (dbUser != null && dbPass != null);
 
                 // AC_RM configuration listening port
                 acRmPort = Integer.parseInt(

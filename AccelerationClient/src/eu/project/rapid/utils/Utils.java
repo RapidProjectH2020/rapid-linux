@@ -14,6 +14,9 @@ public final class Utils {
 
     // The operating system where this app running on.
     private static String OS = null;
+    private static final String userHomeFolder = System.getProperty("user.home");
+    private static final String offloadedFile = userHomeFolder + File.separator +
+            Constants.RAPID_FOLDER_SERVER_DEFAULT + File.separator + Constants.FILE_OFFLOADED;
 
     /**
      * Create the rapid working directory.
@@ -58,10 +61,14 @@ public final class Utils {
      * Create a sentinel file that methods can use to know that they have been offloaded.
      */
     public static void createOffloadFile() {
-        log.info("Creating sentinel file: " + Constants.FILE_OFFLOADED);
-        File f = new File(Constants.FILE_OFFLOADED);
+        log.info("---Creating sentinel file: " + offloadedFile);
+        File f = new File(offloadedFile);
         try {
-            f.createNewFile();
+            if (f.createNewFile()) {
+                log.info("Sentinel file was created.");
+            } else {
+                log.info("Sentinel file already exists.");
+            }
         } catch (IOException e) {
             log.error("Error while creating sentinel file: " + e);
         }
@@ -73,13 +80,19 @@ public final class Utils {
      * @param file the directory to delete.
      */
     public static void deleteDir(File file) {
-
-        if (file.isDirectory()) {
-            for (File f : file.listFiles()) {
-                deleteDir(f);
+        if (file != null ) {
+            if (file.isDirectory()) {
+                File[] files = file.listFiles();
+                if (files != null) {
+                    for (File f : files) {
+                        deleteDir(f);
+                    }
+                }
+            }
+            if (file.delete()) {
+                log.info(file.getAbsolutePath() + " deleted.");
             }
         }
-        file.delete();
     }
 
     /**
@@ -112,14 +125,8 @@ public final class Utils {
      * <b>False</b> if it is running on the phone.
      */
     public static boolean isOffloaded() {
-        try {
-            File tempFile = new File(Constants.FILE_OFFLOADED);
-            return tempFile.exists();
-        } catch (Exception e) {
-            return true;
-        }
+        return new File(offloadedFile).exists();
     }
-
 
     /**
      * Write the ID of this clone on the file "/mnt/sdcard/rapid/cloneId".<br>
@@ -131,15 +138,11 @@ public final class Utils {
      * @param cloneHelperId the ID of this clone assigned by the main clone.
      */
     public static void writeCloneHelperId(int cloneHelperId) {
-        try {
-            File cloneIdFile = new File(Constants.CLONE_ID_FILE);
-            FileWriter cloneIdWriter = new FileWriter(cloneIdFile);
+        File cloneIdFile = new File(Constants.CLONE_ID_FILE);
+        try (FileWriter cloneIdWriter = new FileWriter(cloneIdFile)) {
             cloneIdWriter.write(String.valueOf(cloneHelperId));
-            cloneIdWriter.close();
         } catch (IOException e) {
-            e.printStackTrace();
-        } catch (Exception e) {
-            e.printStackTrace();
+            log.error("Could not write the id of this helper VM: " + e);
         }
     }
 
@@ -151,24 +154,14 @@ public final class Utils {
      * CLONE_ID otherwise
      */
     public static int readCloneHelperId() {
-        Scanner cloneIdReader = null;
         int cloneId = 0;
-
-        try {
-            File cloneIdFile = new File(Constants.CLONE_ID_FILE);
-            cloneIdReader = new Scanner(cloneIdFile);
+        File cloneIdFile = new File(Constants.CLONE_ID_FILE);
+        try (Scanner cloneIdReader = new Scanner(cloneIdFile))  {
             cloneId = cloneIdReader.nextInt();
         } catch (Exception e) {
-            // Stay quiet, we know it.
-        } finally {
-            try {
-                cloneIdReader.close();
-            } catch (Exception e) {
-                System.err.println(
-                        "CloneId file is not here, this means that this is the main clone (or the phone)");
-            }
+            // If this file is not present, this is the main clone, so cloneId = 0 is correct.
+            System.out.println("CloneId file is not here, this means that this is the main clone (or the phone)");
         }
-
         return cloneId;
     }
 
@@ -177,7 +170,11 @@ public final class Utils {
      */
     public static void deleteCloneHelperId() {
         File cloneIdFile = new File(Constants.CLONE_ID_FILE);
-        cloneIdFile.delete();
+        if (cloneIdFile.delete()) {
+            log.info("cloneId file successfully deleted");
+        } else {
+            log.info("cloneId does not exist");
+        }
     }
 
     /**

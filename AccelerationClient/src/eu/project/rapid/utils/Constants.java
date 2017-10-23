@@ -20,16 +20,6 @@ public final class Constants {
   public static final String CONFIG_PROPERTIES = "config.properties";
   public static final String LOG_FILE_NAME_KEY = "rapid-log";
   public static final String LOG_FILE_NAME_DEFAULT = "rapid-log.csv";
-  public static final String DB_FILE_NAME_KEY = "rapidDb";
-  public static final String DB_FILE_NAME_DEFAULT = "rapidDb";
-  // DB drivers
-  public static final String DB_JDBC_DRIVER_KEY = "dbDriver";
-  public static final String DB_JDBC_DRIVER_DEFAULT = "com.mysql.jdbc.Driver";
-  public static final String DB_URL_KEY = "dbUrl";
-  public static final String DB_URL_DEFAULT = "jdbc:mysql://localhost/"; // rapidDb?useUnicode=true&useJDBCCompliantTimezoneShift=true&useLegacyDatetimeCode=false&serverTimezone=Europe/Rome";
-  // Database credentials
-  public static final String DB_USER_KEY = "rapidDbUser";
-  public static final String DB_PASS_KEY = "rapidDbPass";
   // GVirtuS ip and port
   public static final String GVIRTUS_IP_KEY = "gvirtusIp";
   public static final String GVIRTUS_PORT_KEY = "gvirtusPort";
@@ -73,10 +63,8 @@ public final class Constants {
   public static final String RAPID_FOLDER_SERVER_KEY = "rapidServerFolder";
   public static final String RAPID_FOLDER_SERVER_DEFAULT = "rapid-server";
   // Check if the method is offloaded or if it's running on client side.
-  public static final String FILE_OFFLOADED =
-      RAPID_FOLDER_SERVER_DEFAULT + File.separator + "offloaded";
-  public static final String CLONE_ID_FILE =
-      RAPID_FOLDER_SERVER_DEFAULT + File.separator + "cloneId";
+  public static final String FILE_OFFLOADED = "offloaded";
+  public static final String CLONE_ID_FILE = "cloneId";
   public static final String AS_PORT_KEY = "asPort";
   public static final String AS_PORT_SSL_KEY = "asPortSSL";
   // SLAM runs in the same machine as the VM
