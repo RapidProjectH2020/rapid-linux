@@ -50,7 +50,9 @@ public class AccelerationServer {
 
         try {
             Utils.createDirIfNotExist(config.getRapidFolder());
-            Utils.createDirIfNotExist(config.getRapidFolder() + File.separator + "libs");
+
+            String libFolder = config.getRapidFolder() + File.separator + "libs";
+            Utils.createDirIfNotExist(libFolder);
             Utils.createOffloadFile();
         } catch (FileNotFoundException e) {
             log.error("Could not initialize the RAPID folder on " + config.getUserHomeFolder());

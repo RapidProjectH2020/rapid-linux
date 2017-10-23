@@ -682,7 +682,7 @@ public class AppHandler implements Runnable {
                 File f = new File(appFolder, jarEntry.getName());
                 if (jarEntry.isDirectory()) {
                     if (!f.mkdirs()) {
-                        log.warn("Could not create the file: " + f.getAbsolutePath());
+                        log.warn("Could not create the folder: " + f.getAbsolutePath());
                     }
                 } else {
                     if (!f.getParentFile().exists()) {
