@@ -46,7 +46,7 @@ public class LogRecord {
 
     private final static Logger log = LogManager.getLogger(LogRecord.class.getSimpleName());
 
-    public LogRecord(ProgramProfiler progProfiler, NetworkProfiler netProfiler, Configuration config) {
+    LogRecord(ProgramProfiler progProfiler, NetworkProfiler netProfiler, Configuration config) {
         appName = progProfiler.getAppName();
         methodName = progProfiler.getMethodName();
         execLocation = progProfiler.getExecLocation();
@@ -73,6 +73,11 @@ public class LogRecord {
     }
 
     private synchronized void saveToFile() {
+        if (this.logFilePath == null) {
+            log.error("Cannot save the log record because the logFilePath is null");
+            return;
+        }
+
         File logFile = new File(this.logFilePath);
         boolean logFileCreated;
         FileWriter logFileWriter = null;
@@ -82,7 +87,7 @@ public class LogRecord {
             if (logFileCreated) {
                 logFileWriter.append(LogRecord.LOG_HEADERS + "\n");
             }
-            logFileWriter.append(this.toString() + "\n");
+            logFileWriter.append(this.toString()).append("\n");
             logFileWriter.flush();
         } catch (IOException e) {
             log.error("Not able to create the logFile " + logFilePath + ": " + e);

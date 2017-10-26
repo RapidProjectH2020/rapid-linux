@@ -220,19 +220,18 @@ public final class Configuration {
             cryptoInitialized = true;
 
             // log.info("Certificate: " + cert.toString());
-            log.info("Crypto intialized correctly");
+            log.info("Crypto initialized correctly");
             // log.info("PrivateKey algorithm: " + privateKey.getAlgorithm());
             log.info("PublicKey algorithm: " + publicKey.getAlgorithm());
 
         } catch (IOException | KeyStoreException | NoSuchAlgorithmException | CertificateException e) {
             log.error("Crypto not initialized: " + e);
             e.printStackTrace();
-        } catch (UnrecoverableKeyException e) {
+        } catch (UnrecoverableKeyException | KeyManagementException e) {
             // TODO Auto-generated catch block
             e.printStackTrace();
-        } catch (KeyManagementException e) {
-            // TODO Auto-generated catch block
-            e.printStackTrace();
+        } catch (Exception e) {
+            log.error("Unknown exception while initializing crypto: " + e);
         }
     }
 
