@@ -208,6 +208,7 @@ public final class Configuration {
             kmf.init(keyStore, sslCertPassword.toCharArray());
 
             // privateKey = (PrivateKey) keyStore.getKey(sslCertAlias, "kot".toCharArray());
+            log.info("Getting the public key...");
             Certificate cert = keyStore.getCertificate(sslCertAlias);
             publicKey = cert.getPublicKey();
 
