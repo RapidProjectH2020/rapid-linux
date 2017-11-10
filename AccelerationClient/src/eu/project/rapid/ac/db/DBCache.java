@@ -63,7 +63,7 @@ public class DBCache {
     public void insertEntry(DBEntry entry) {
         String key = entry.getMethodName();
         if (!dbMap.containsKey(key)) {
-            dbMap.put(key, new LinkedList<DBEntry>());
+            dbMap.put(key, new LinkedList<>());
         }
 
         while (dbMap.get(key).size() >= Constants.MAX_METHOD_EXEC_HISTORY) {
@@ -76,10 +76,10 @@ public class DBCache {
     }
 
     /**
-     * To be used to retrieve all entries.
+     * To be used to retrieve all entries of a method.
      *
-     * @param methodName
-     * @return
+     * @param methodName The name of the method.
+     * @return The sorted entries (based on timestamp) corresponding to the given methodName.
      */
     public Deque<DBEntry> getAllEntriesFilteredOn(String methodName) {
         if (dbMap.containsKey(methodName)) {
@@ -90,12 +90,11 @@ public class DBCache {
     }
 
     /**
-     * To be used for retrieving all entries this method. The elements are sorted in
-     * incremental order based on timestamp.
+     * To be used for retrieving all entries of the method of an application.
      *
-     * @param methodName
-     * @param appName
-     * @return
+     * @param appName The application name, usually the jar filename.
+     * @param methodName The method name.
+     * @return The sorted entries (based on timestamp) corresponding to the given appName and methodName.
      */
     public Deque<DBEntry> getAllEntriesFilteredOn(String appName, String methodName) {
 

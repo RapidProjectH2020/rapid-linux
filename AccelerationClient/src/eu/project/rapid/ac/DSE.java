@@ -71,8 +71,7 @@ class DSE {
      * @return <b>True</b> if the method should be executed remotely<br>
      * <b>False</b> otherwise.
      */
-    private boolean shouldOffloadDBCache(String appName, String methodName, int currUlRate,
-                                         int currDlRate) {
+    private boolean shouldOffloadDBCache(String appName, String methodName, int currUlRate, int currDlRate) {
 
         log.info("Deciding exec location for appName=" + appName
                 + ", methodName=" + methodName + ", currUlRate=" + currUlRate + ", currDlRate="
@@ -120,12 +119,9 @@ class DSE {
         }
 
         long localDuration = 0;
-        long[] localTimestamps = new long[nrLocalExec];
         int i = 0;
         for (DBEntry e : localResults) {
             meanDurLocal += e.getExecDuration();
-            localTimestamps[i] = e.getTimestamp();
-
             i++;
             if (i > 1) {
                 meanDurLocal /= 2;
@@ -162,43 +158,9 @@ class DSE {
         }
         log.info("nrRemoteExec: " + nrRemoteExec);
 
-        // DECISION 2
-        int NR_TIMES_SWITCH_SIDES = 10;
-        int count = 0;
-        ExecLocation prevExecLocation = null;
-        for (DBEntry e : dbCache.getAllEntriesFilteredOn(methodName)) {
-            if (count < NR_TIMES_SWITCH_SIDES
-                    && (prevExecLocation == null || e.getExecLocation().equals(prevExecLocation))) {
-                prevExecLocation = e.getExecLocation();
-                count++;
-            } else {
-                break;
-            }
-        }
-
-        if (count == NR_TIMES_SWITCH_SIDES) {
-            switch (prevExecLocation) {
-                case REMOTE:
-                    log.info("Decision 2: Too many remote executions in a row.");
-                    return false;
-                case LOCAL:
-                    log.info("Decision 2: Too many local executions in a row.");
-                    if (currUlRate > MIN_UL_RATE_OFFLOAD_1_TIME && currDlRate > MIN_DL_RATE_OFFLOAD_1_TIME) {
-                        log.info("Decision 2->1: Good connectivity, decided to offload.");
-                        return true;
-                    } else {
-                        log.info("Decision 2->1: Bad connectivity, decided to not offload.");
-                        return false;
-                    }
-                default:
-                    log.error("Decision 2: This shouldn't happen, check the implementation.");
-                    break;
-            }
-        }
-
         // DECISION 3
         // Calculate two different mean values for the offloaded execution:
-        // 1. The first are the same as for the local execution, gives more weight to recent runs
+        // 1. The first are the same as for the local execution, gives more weight to recent runs.
         // 2. The second are calculated as the average of the three closest values to the currentUlRate
         // and currDlRate
         int minDistIndex1 = 0, minDistIndex2 = 0, minDistIndex3 = 0;
@@ -246,6 +208,34 @@ class DSE {
 
         // log.debug("meanDurRemote1: " + meanDurRemote1 + " meanDurRemote2: " + meanDurRemote2);
         log.debug("meanDurRemote: " + meanDurRemote + "ns (" + meanDurRemote / 1000000000.0 + "s)");
+
+        // DECISION 2: Count nr. of times in a row the method has been executed on the last location (LOCAL or REMOTE).
+        int count = 0;
+        ExecLocation prevExecLocation = null;
+        for (DBEntry e : dbCache.getAllEntriesFilteredOn(methodName)) {
+            if (prevExecLocation == null || e.getExecLocation().equals(prevExecLocation)) {
+                prevExecLocation = e.getExecLocation();
+                count++;
+            } else {
+                break;
+            }
+        }
+
+        // if we have been executing this method remotely for many times in a row, because is convenient,
+        // decide to run it locally after some time.
+        if(prevExecLocation == ExecLocation.REMOTE && count > 10 * (int)(meanDurLocal / meanDurRemote)) {
+            log.info("Decision 2: Too many remote executions in a row.");
+            return false;
+        } else if(prevExecLocation == ExecLocation.LOCAL && count > 10 * (int)(meanDurRemote / meanDurLocal)) {
+            log.info("Decision 2: Too many local executions in a row.");
+            if (currUlRate > MIN_UL_RATE_OFFLOAD_1_TIME && currDlRate > MIN_DL_RATE_OFFLOAD_1_TIME) {
+                log.info("Decision 2->1: Good connectivity, decided to offload.");
+                return true;
+            } else {
+                log.info("Decision 2->1: Bad connectivity, decided to not offload.");
+                return false;
+            }
+        }
 
         log.info("Decision 3.");
         return meanDurRemote <= meanDurLocal;
